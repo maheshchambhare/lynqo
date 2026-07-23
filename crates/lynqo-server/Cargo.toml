@@ -1,0 +1,32 @@
+[package]
+name = "lynqo-server"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "lynqo-server"
+path = "src/main.rs"
+
+[dependencies]
+lynqo-core = { path = "../lynqo-core" }
+lynqo-db = { path = "../lynqo-db" }
+lynqo-clipboard = { path = "../lynqo-clipboard" }
+lynqo-discovery = { path = "../lynqo-discovery" }
+lynqo-files = { path = "../lynqo-files" }
+axum = { workspace = true }
+tokio = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tokio-util = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+futures = { workspace = true }
+arboard = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+dirs = { workspace = true }
+mime_guess = { workspace = true }

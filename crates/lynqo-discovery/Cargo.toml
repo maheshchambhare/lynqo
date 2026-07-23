@@ -1,0 +1,9 @@
+[package]
+name = "lynqo-discovery"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mdns-sd = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }

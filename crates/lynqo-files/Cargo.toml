@@ -1,0 +1,10 @@
+[package]
+name = "lynqo-files"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lynqo-core = { path = "../lynqo-core" }
+lynqo-db = { path = "../lynqo-db" }
+uuid = { workspace = true }
+anyhow = { workspace = true }
