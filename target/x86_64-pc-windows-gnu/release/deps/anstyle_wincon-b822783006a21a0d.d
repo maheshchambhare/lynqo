@@ -1,0 +1,10 @@
+/Users/mahesh/Desktop/Projects/backend/lynqo/target/x86_64-pc-windows-gnu/release/deps/anstyle_wincon-b822783006a21a0d.d: /Users/mahesh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/lib.rs /Users/mahesh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/ansi.rs /Users/mahesh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/stream.rs /Users/mahesh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/windows.rs
+
+/Users/mahesh/Desktop/Projects/backend/lynqo/target/x86_64-pc-windows-gnu/release/deps/libanstyle_wincon-b822783006a21a0d.rlib: /Users/mahesh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/lib.rs /Users/mahesh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/ansi.rs /Users/mahesh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/stream.rs /Users/mahesh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/windows.rs
+
+/Users/mahesh/Desktop/Projects/backend/lynqo/target/x86_64-pc-windows-gnu/release/deps/libanstyle_wincon-b822783006a21a0d.rmeta: /Users/mahesh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/lib.rs /Users/mahesh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/ansi.rs /Users/mahesh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/stream.rs /Users/mahesh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/windows.rs
+
+/Users/mahesh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/lib.rs:
+/Users/mahesh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/ansi.rs:
+/Users/mahesh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/stream.rs:
+/Users/mahesh/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/windows.rs:

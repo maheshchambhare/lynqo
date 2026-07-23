@@ -248,3 +248,10 @@ enum WindowMode {
 
 final windowModeProvider = StateProvider<WindowMode>((ref) => WindowMode.normal);
 
+enum AppThemeMode { light, dark }
+
+final appThemeModeProvider = StateProvider<AppThemeMode>((ref) => AppThemeMode.light);
+
+
+
+

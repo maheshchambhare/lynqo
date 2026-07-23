@@ -13,6 +13,9 @@ class WsClient {
   WebSocketChannel? _channel;
   bool _shouldReconnect = true;
   Timer? _reconnectTimer;
+  final _eventController = StreamController<Map<String, dynamic>>.broadcast();
+
+  Stream<Map<String, dynamic>> get rawStream => _eventController.stream;
 
   WsClient(this._ref);
 
@@ -52,7 +55,10 @@ class WsClient {
   void _handleMessage(dynamic rawMsg) {
     try {
       final json = jsonDecode(rawMsg) as Map<String, dynamic>;
-      final type = json['type'] as String;
+      _eventController.add(json);
+
+      final type = json['type'] as String?;
+      if (type == null) return;
 
       switch (type) {
         case 'clipboard_updated':

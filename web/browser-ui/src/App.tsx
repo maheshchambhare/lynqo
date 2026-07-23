@@ -1,26 +1,65 @@
 import { useEffect, useState } from 'react';
-import { LayoutDashboard, Files, Clipboard, Monitor } from 'lucide-react';
+import { HardDrive, Files, Clipboard, Monitor, Settings, Sun, Moon, RefreshCw } from 'lucide-react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useStore } from './hooks/useStore';
 import Dashboard from './pages/Dashboard';
 import FilesPage from './pages/FilesPage';
+import SharedFolderPage from './pages/SharedFolderPage';
 import ClipboardPage from './pages/ClipboardPage';
 import DevicesPage from './pages/DevicesPage';
 import './index.css';
 
-type Page = 'dashboard' | 'files' | 'clipboard' | 'devices';
+type Page = 'shared_folder' | 'files' | 'clipboard' | 'devices' | 'dashboard';
+const VALID_PAGES: Page[] = ['shared_folder', 'files', 'clipboard', 'devices', 'dashboard'];
 
-const NAV = [
-  { id: 'dashboard' as Page, label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'files' as Page, label: 'Files', icon: Files },
-  { id: 'clipboard' as Page, label: 'Clipboard', icon: Clipboard },
-  { id: 'devices' as Page, label: 'Devices', icon: Monitor },
-];
+function getInitialPage(): Page {
+  // ponytail: native location.hash router, falls back to localStorage
+  const hash = window.location.hash.replace('#', '') as Page;
+  if (VALID_PAGES.includes(hash)) return hash;
+  const saved = localStorage.getItem('lynqo_active_page') as Page;
+  if (VALID_PAGES.includes(saved)) return saved;
+  return 'shared_folder';
+}
 
 export default function App() {
-  const [page, setPage] = useState<Page>('dashboard');
+  const [page, setPageInternal] = useState<Page>(getInitialPage);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    return (localStorage.getItem('lynqo_theme') as 'light' | 'dark') || 'light';
+  });
   const store = useStore();
   const { send } = useWebSocket(store.handleWsEvent);
+
+  const setPage = (newPage: Page) => {
+    setPageInternal(newPage);
+    window.location.hash = newPage;
+    localStorage.setItem('lynqo_active_page', newPage);
+  };
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '') as Page;
+      if (VALID_PAGES.includes(hash)) {
+        setPageInternal(hash);
+        localStorage.setItem('lynqo_active_page', hash);
+      }
+    };
+
+    if (!window.location.hash && page) {
+      window.location.hash = page;
+    }
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [page]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('lynqo_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  };
 
   useEffect(() => {
     store.fetchAll();
@@ -28,79 +67,94 @@ export default function App() {
   }, []);
 
   const pages: Record<Page, React.ReactElement> = {
-    dashboard: <Dashboard store={store} />,
+    shared_folder: <SharedFolderPage store={store} />,
     files: <FilesPage store={store} />,
     clipboard: <ClipboardPage store={store} send={send} />,
     devices: <DevicesPage store={store} />,
+    dashboard: <Dashboard store={store} />,
   };
 
+  const navItems: Array<{ id: Page; label: string; icon: React.ComponentType<{ size?: number }> }> = [
+    { id: 'shared_folder', label: 'Shared Storage', icon: HardDrive },
+    { id: 'files', label: 'All Files', icon: Files },
+    { id: 'clipboard', label: 'Clipboard', icon: Clipboard },
+    { id: 'devices', label: 'Devices', icon: Monitor },
+    { id: 'dashboard', label: 'Settings', icon: Settings },
+  ];
+
+  const currentPageItem = navItems.find((item) => item.id === page);
+
   return (
-    <div className="app">
-      {/* Decorative orb field */}
-      <div className="orb-field" aria-hidden="true">
-        <div className="orb orb-1" />
-        <div className="orb orb-2" />
-        <div className="orb orb-3" />
-        <div className="orb orb-4" />
-      </div>
-
-      {/* Mobile Header */}
-      <header className="mobile-header">
-        <div className="mobile-logo">
-          <div className="logo-mark">L</div>
-          <span className="logo-text">lynqo</span>
-        </div>
-        <div className="mobile-status">
-          <span className="status-dot" />
-          <span className="status-text">Active</span>
-        </div>
-      </header>
-
-      {/* Desktop Sidebar */}
-      <aside className="sidebar">
-        <div className="sidebar-logo">
-          <div className="logo-mark">L</div>
-          <span className="logo-text">lynqo</span>
+    <div className="app-shell">
+      {/* Desktop Navigation Sidebar (≥ 768px) */}
+      <aside className="app-sidebar">
+        <div className="sidebar-brand">
+          <div className="brand-logo-mark">L</div>
+          <span className="brand-title">lynqo</span>
         </div>
 
-        <nav className="nav">
-          {NAV.map(({ id, label, icon: Icon }) => (
+        <nav className="sidebar-nav-list">
+          {navItems.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              id={`nav-${id}`}
-              className={`nav-item ${page === id ? 'active' : ''}`}
+              className={`sidebar-item ${page === id ? 'active' : ''}`}
               onClick={() => setPage(id)}
             >
               <Icon size={16} />
-              {label}
+              <span>{label}</span>
               {id === 'devices' && store.devices.length > 0 && (
-                <span className="nav-badge">{store.devices.length}</span>
+                <span className="nav-badge">
+                  {store.devices.length}
+                </span>
               )}
             </button>
           ))}
         </nav>
 
         <div className="sidebar-footer">
-          <div className="status-row">
-            <span className="status-dot" />
-            <span className="status-text">Server running · lynqo.local:7432</span>
-          </div>
+          <span className="status-indicator-dot" />
+          <span>Server Active · Port 7432</span>
         </div>
       </aside>
 
-      <main className="main">{pages[page]}</main>
+      {/* Main Content Column */}
+      <div className="app-content-col">
+        {/* Responsive Top Bar */}
+        <header className="app-topbar">
+          <div className="topbar-left">
+            <div className="mobile-brand-wrapper">
+              <div className="brand-logo-mark mobile-logo">L</div>
+              <span className="mobile-brand-title">lynqo</span>
+            </div>
+            <span className="topbar-active-page">{currentPageItem?.label}</span>
+          </div>
 
-      {/* Mobile Bottom Tab Bar */}
-      <nav className="mobile-nav">
-        {NAV.map(({ id, label, icon: Icon }) => (
+          <div className="topbar-right">
+            <button className="topbar-icon-btn" onClick={() => store.fetchAll()} title="Refresh Data">
+              <RefreshCw size={16} />
+            </button>
+            <button className="topbar-icon-btn" onClick={toggleTheme} title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}>
+              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+            </button>
+          </div>
+        </header>
+
+        {/* Viewport Area */}
+        <main className="app-main-viewport">
+          {pages[page]}
+        </main>
+      </div>
+
+      {/* Mobile Bottom Navigation Bar (< 768px) */}
+      <nav className="mobile-bottom-nav">
+        {navItems.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
-            id={`mobile-nav-${id}`}
-            className={`mobile-nav-item ${page === id ? 'active' : ''}`}
+            className={`mobile-nav-btn ${page === id ? 'active' : ''}`}
             onClick={() => setPage(id)}
           >
-            <Icon size={20} />
-            <span className="mobile-nav-label">{label}</span>
+            <Icon size={18} />
+            <span>{label.split(' ')[0]}</span>
           </button>
         ))}
       </nav>

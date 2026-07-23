@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
+import 'dart:async';
 import 'dart:ui' show ImageFilter;
 import 'dart:convert';
 import 'dart:math' as math;
@@ -10,30 +11,54 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:dio/dio.dart';
 import '../models.dart';
 import '../core/providers.dart';
+import '../core/ws_client.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:path/path.dart' as p;
 import 'package:window_manager/window_manager.dart';
 
-// ── Colors & Design Tokens ───────────────────────────────────────────────────
+// ── Colors & Design Tokens (Apple macOS Finder Theme) ─────────────────────────
 
-const Color bgBase = Color(0xFF06070B);
-const Color bgSurface = Color(0x12FFFFFF);
-const Color bgElevated = Color(0x1EFFFFFF);
-const Color bgHover = Color(0x28FFFFFF);
-const Color borderTheme = Color(0x1F818CF8);
-const Color borderGlow = Color(0x3B818CF8);
+Color bgBase = const Color(0xFFEBECEF);
+Color bgSurface = const Color(0xFFFFFFFF);
+Color bgElevated = const Color(0xFFF6F7F9);
+Color bgHover = const Color(0xFFF0F1F5);
+Color borderTheme = const Color(0x1F000000);
+Color borderGlow = const Color(0x3B007AFF);
 
-const Color accent = Color(0xFF818CF8);
-const Color accentHover = Color(0xFF93C5FD);
-const Color accentCyan = Color(0xFF22D3EE);
-const Color accentPink = Color(0xFFF472B6);
-const Color success = Color(0xFF34D399);
-const Color danger = Color(0xFFF87171);
-const Color warning = Color(0xFFF59E0B);
+const Color accent = Color(0xFF007AFF);
+const Color accentFolderYellow = Color(0xFFFFB300);
+const Color accentHover = Color(0xFF0A84FF);
+const Color accentCyan = Color(0xFF34C759);
+const Color accentPink = Color(0xFFFF2D55);
+const Color success = Color(0xFF34C759);
+const Color danger = Color(0xFFFF3B30);
+const Color warning = Color(0xFFFF9500);
 
-const Color textPrimary = Color(0xFFF3F4F6);
-const Color textSecondary = Color(0xFF9CA3AF);
-const Color textMuted = Color(0xFF6B7280);
+Color textPrimary = const Color(0xFF1C1C1E);
+Color textSecondary = const Color(0xFF6E6E73);
+Color textMuted = const Color(0xFF8E8E93);
+
+void applyTheme(AppThemeMode mode) {
+  if (mode == AppThemeMode.dark) {
+    bgBase = const Color(0xFF090B10);
+    bgSurface = const Color(0xFF121520);
+    bgElevated = const Color(0xFF1B1F2E);
+    bgHover = const Color(0xFF22273B);
+    borderTheme = const Color(0x1FFFFFFF);
+    textPrimary = const Color(0xFFF3F4F6);
+    textSecondary = const Color(0xFF9CA3AF);
+    textMuted = const Color(0xFF6B7280);
+  } else {
+    bgBase = const Color(0xFFEBECEF);
+    bgSurface = const Color(0xFFFFFFFF);
+    bgElevated = const Color(0xFFF6F7F9);
+    bgHover = const Color(0xFFF0F1F5);
+    borderTheme = const Color(0x1F000000);
+    textPrimary = const Color(0xFF1C1C1E);
+    textSecondary = const Color(0xFF6E6E73);
+    textMuted = const Color(0xFF8E8E93);
+  }
+}
 
 const gradPurple = LinearGradient(
   colors: [Color(0xFF818CF8), Color(0xFF6366F1)],
@@ -75,6 +100,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     FilesScreen(),
     ClipboardScreen(),
     DevicesScreen(),
+    VideoReviewStudioScreen(),
     SettingsScreen(),
   ];
 
@@ -105,6 +131,8 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
   Widget build(BuildContext context) {
     final status = ref.watch(connectionStatusProvider);
     final windowMode = ref.watch(windowModeProvider);
+    final themeMode = ref.watch(appThemeModeProvider);
+    applyTheme(themeMode);
 
     if (windowMode == WindowMode.popup) {
       return const ClipboardPopup();
@@ -114,15 +142,6 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
       backgroundColor: bgBase,
       body: Stack(
         children: [
-          // Background ambient light orbs
-          Positioned(
-            top: -150, left: -100,
-            child: _buildOrb(500, const Color(0xFF6366F1), 0.1),
-          ),
-          Positioned(
-            bottom: -150, right: -100,
-            child: _buildOrb(400, const Color(0xFF22D3EE), 0.08),
-          ),
           // Sidebar + Main Section Layout
           Row(
             children: [
@@ -134,9 +153,9 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                     child: Container(
                       width: 236,
                       decoration: BoxDecoration(
-                        color: const Color(0x1A080914),
+                        color: bgElevated,
                         border: Border(
-                          right: BorderSide(color: Colors.white.withOpacity(0.06), width: 1),
+                          right: BorderSide(color: borderTheme, width: 1),
                         ),
                       ),
                     child: Column(
@@ -164,7 +183,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                                 child: const Text('L', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                               ),
                               const SizedBox(width: 12),
-                              const Text(
+                              Text(
                                 'lynqo',
                                 style: TextStyle(
                                   color: textPrimary,
@@ -187,7 +206,8 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                                 _buildNavItem(1, 'Shared Files', Icons.folder_open_rounded),
                                 _buildNavItem(2, 'Clipboard', Icons.assignment_turned_in_rounded),
                                 _buildNavItem(3, 'Devices', Icons.devices_rounded),
-                                _buildNavItem(4, 'Settings', Icons.tune_rounded),
+                                _buildNavItem(4, 'Video Review 🎬', Icons.movie_creation_rounded),
+                                _buildNavItem(5, 'Settings', Icons.tune_rounded),
                               ],
                             ),
                           ),
@@ -214,12 +234,12 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          const Text('Connect Portal', style: TextStyle(color: textPrimary, fontWeight: FontWeight.w600, fontSize: 12)),
-                                          Text('IP: $_localIp', style: const TextStyle(color: textMuted, fontSize: 10.5)),
+                                          Text('Connect Portal', style: TextStyle(color: textPrimary, fontWeight: FontWeight.w600, fontSize: 12)),
+                                          Text('IP: $_localIp', style: TextStyle(color: textMuted, fontSize: 10.5)),
                                         ],
                                       ),
                                     ),
-                                    const Icon(Icons.chevron_right_rounded, color: textMuted, size: 16),
+                                    Icon(Icons.chevron_right_rounded, color: textMuted, size: 16),
                                   ],
                                 ),
                               ),
@@ -238,7 +258,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                               const SizedBox(width: 10),
                               Text(
                                 status == ConnectionStatus.connected ? 'Server running' : 'Connecting...',
-                                style: const TextStyle(color: textSecondary, fontSize: 12, fontWeight: FontWeight.w500),
+                                style: TextStyle(color: textSecondary, fontSize: 12, fontWeight: FontWeight.w500),
                               ),
                             ],
                           ),
@@ -298,9 +318,9 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text('Device Link Portal', style: TextStyle(color: textPrimary, fontWeight: FontWeight.w700, fontSize: 16)),
+                                Text('Device Link Portal', style: TextStyle(color: textPrimary, fontWeight: FontWeight.w700, fontSize: 16)),
                                 IconButton(
-                                  icon: const Icon(Icons.close_rounded, color: textSecondary, size: 18),
+                                  icon: Icon(Icons.close_rounded, color: textSecondary, size: 18),
                                   onPressed: () => setState(() => _showQrDialog = false),
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(),
@@ -321,7 +341,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                               ),
                             ),
                             const SizedBox(height: 16),
-                            const Text(
+                            Text(
                               'Scan this QR code from your mobile web browser or other devices on the same Wi-Fi to sync clipboard and share files instantly.',
                               textAlign: TextAlign.center,
                               style: TextStyle(color: textSecondary, fontSize: 11, height: 1.4),
@@ -460,7 +480,7 @@ class DashboardScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Dashboard', style: TextStyle(color: textPrimary, fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+          Text('Dashboard', style: TextStyle(color: textPrimary, fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
           const SizedBox(height: 24),
           // Stats Row
           Row(
@@ -494,7 +514,9 @@ class DashboardScreen extends ConsumerWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Mesh Local Topology', style: TextStyle(color: textPrimary, fontWeight: FontWeight.w700, fontSize: 14)),
+                          Expanded(
+                            child: Text('Mesh Local Topology', style: TextStyle(color: textPrimary, fontWeight: FontWeight.w700, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          ),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
@@ -527,7 +549,7 @@ class DashboardScreen extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Active Pipelines', style: TextStyle(color: textPrimary, fontWeight: FontWeight.w700, fontSize: 14)),
+                      Text('Active Pipelines', style: TextStyle(color: textPrimary, fontWeight: FontWeight.w700, fontSize: 14)),
                       const SizedBox(height: 12),
                       Expanded(
                         child: activeTransfers.isEmpty
@@ -546,7 +568,7 @@ class DashboardScreen extends ConsumerWidget {
                                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                           children: [
                                             Expanded(
-                                              child: Text(t.fileName ?? 'Unnamed File', style: const TextStyle(color: textPrimary, fontSize: 12, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                              child: Text(t.fileName ?? 'Unnamed File', style: TextStyle(color: textPrimary, fontSize: 12, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
                                             ),
                                             Text(
                                               t.action == 'upload' ? 'Sending' : 'Receiving',
@@ -568,8 +590,8 @@ class DashboardScreen extends ConsumerWidget {
                                         Row(
                                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                           children: [
-                                            Text('${(t.transferredBytes / 1024 / 1024).toStringAsFixed(1)}MB / ${(t.totalBytes / 1024 / 1024).toStringAsFixed(1)}MB', style: const TextStyle(color: textMuted, fontSize: 10)),
-                                            Text('${(pct * 100).toStringAsFixed(0)}%', style: const TextStyle(color: textSecondary, fontSize: 10, fontWeight: FontWeight.bold)),
+                                            Text('${(t.transferredBytes / 1024 / 1024).toStringAsFixed(1)}MB / ${(t.totalBytes / 1024 / 1024).toStringAsFixed(1)}MB', style: TextStyle(color: textMuted, fontSize: 10)),
+                                            Text('${(pct * 100).toStringAsFixed(0)}%', style: TextStyle(color: textSecondary, fontSize: 10, fontWeight: FontWeight.bold)),
                                           ],
                                         ),
                                       ],
@@ -614,13 +636,15 @@ class DashboardScreen extends ConsumerWidget {
             child: Icon(icon, color: Colors.white, size: 20),
           ),
           const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(value, style: const TextStyle(color: textPrimary, fontSize: 22, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 2),
-              Text(label, style: const TextStyle(color: textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(value, style: TextStyle(color: textPrimary, fontSize: 22, fontWeight: FontWeight.w800), maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
+                Text(label, style: TextStyle(color: textSecondary, fontSize: 12, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+              ],
+            ),
           ),
         ],
       ),
@@ -733,7 +757,7 @@ class MeshPainter extends CustomPainter {
       final TextPainter textPainter = TextPainter(
         text: TextSpan(
           text: devices[i].name,
-          style: const TextStyle(color: textSecondary, fontSize: 8.5, fontWeight: FontWeight.bold),
+          style: TextStyle(color: textSecondary, fontSize: 8.5, fontWeight: FontWeight.bold),
         ),
         textDirection: TextDirection.ltr,
       )..layout();
@@ -897,7 +921,7 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
                               style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
                         ),
                         const SizedBox(height: 2),
-                        const Text('Instantly share and stream files across your network', style: TextStyle(color: textSecondary, fontSize: 13)),
+                        Text('Instantly share and stream files across your network', style: TextStyle(color: textSecondary, fontSize: 13)),
                       ],
                     ),
                     _GradientButton(
@@ -961,7 +985,7 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
                         const Text('Drop Files to Share',
                             style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
-                        const Text('Files will be instantly shared on your network',
+                        Text('Files will be instantly shared on your network',
                             style: TextStyle(color: textSecondary, fontSize: 13)),
                       ],
                     ),
@@ -1069,9 +1093,9 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
       children: [
         Icon(icon, color: color.withOpacity(0.8), size: 16),
         const SizedBox(width: 8),
-        Text(value, style: const TextStyle(color: textPrimary, fontSize: 13.5, fontWeight: FontWeight.w700)),
+        Text(value, style: TextStyle(color: textPrimary, fontSize: 13.5, fontWeight: FontWeight.w700)),
         const SizedBox(width: 6),
-        Text(label, style: const TextStyle(color: textMuted, fontSize: 11.5)),
+        Text(label, style: TextStyle(color: textMuted, fontSize: 11.5)),
       ],
     );
   }
@@ -1123,7 +1147,7 @@ class _ClipboardScreenState extends ConsumerState<ClipboardScreen> {
                 style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
           ),
           const SizedBox(height: 2),
-          const Text('Copy text or images on any device to view them instantly here', style: TextStyle(color: textSecondary, fontSize: 13)),
+          Text('Copy text or images on any device to view them instantly here', style: TextStyle(color: textSecondary, fontSize: 13)),
           const SizedBox(height: 20),
           // Composer card
           Container(
@@ -1139,10 +1163,10 @@ class _ClipboardScreenState extends ConsumerState<ClipboardScreen> {
                 TextField(
                   controller: _controller,
                   maxLines: 2,
-                  style: const TextStyle(color: textPrimary, fontSize: 13.5),
+                  style: TextStyle(color: textPrimary, fontSize: 13.5),
                   decoration: InputDecoration(
                     hintText: 'Compose or paste clipboard payload to broadcast...',
-                    hintStyle: const TextStyle(color: textMuted, fontSize: 13),
+                    hintStyle: TextStyle(color: textMuted, fontSize: 13),
                     filled: true,
                     fillColor: Colors.black.withOpacity(0.2),
                     contentPadding: const EdgeInsets.all(12),
@@ -1151,7 +1175,7 @@ class _ClipboardScreenState extends ConsumerState<ClipboardScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     focusedBorder: OutlineInputBorder(
-                      borderSide: const BorderSide(color: borderTheme),
+                      borderSide: BorderSide(color: borderTheme),
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
@@ -1207,7 +1231,7 @@ class DevicesScreen extends ConsumerWidget {
                 style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
           ),
           const SizedBox(height: 2),
-          const Text('Manage and monitor connected mesh nodes', style: TextStyle(color: textSecondary, fontSize: 13)),
+          Text('Manage and monitor connected mesh nodes', style: TextStyle(color: textSecondary, fontSize: 13)),
           const SizedBox(height: 20),
           Expanded(
             child: devices.isEmpty
@@ -1257,7 +1281,7 @@ class DevicesScreen extends ConsumerWidget {
                                 children: [
                                   Row(
                                     children: [
-                                      Text(d.name, style: const TextStyle(color: textPrimary, fontWeight: FontWeight.w700, fontSize: 14)),
+                                      Text(d.name, style: TextStyle(color: textPrimary, fontWeight: FontWeight.w700, fontSize: 14)),
                                       const SizedBox(width: 8),
                                       if (d.groupName != null)
                                         Container(
@@ -1266,14 +1290,14 @@ class DevicesScreen extends ConsumerWidget {
                                             color: Colors.white.withOpacity(0.04),
                                             borderRadius: BorderRadius.circular(4),
                                           ),
-                                          child: Text(d.groupName!, style: const TextStyle(color: textSecondary, fontSize: 9, fontWeight: FontWeight.bold)),
+                                          child: Text(d.groupName!, style: TextStyle(color: textSecondary, fontSize: 9, fontWeight: FontWeight.bold)),
                                         ),
                                     ],
                                   ),
                                   const SizedBox(height: 4),
                                   Row(
                                     children: [
-                                      Text(d.ipAddress ?? 'Unresolved IP', style: const TextStyle(color: textMuted, fontSize: 11)),
+                                      Text(d.ipAddress ?? 'Unresolved IP', style: TextStyle(color: textMuted, fontSize: 11)),
                                       const SizedBox(width: 12),
                                       if (d.latencyMs != null) ...[
                                         Icon(Icons.network_ping_rounded, color: d.latencyMs! < 50 ? success : warning, size: 12),
@@ -1335,7 +1359,7 @@ class DevicesScreen extends ConsumerWidget {
             Text('$level%', style: TextStyle(color: textPrimary, fontSize: 11, fontWeight: FontWeight.bold)),
           ],
         ),
-        const Text('Battery', style: TextStyle(color: textMuted, fontSize: 9)),
+        Text('Battery', style: TextStyle(color: textMuted, fontSize: 9)),
       ],
     );
   }
@@ -1350,10 +1374,10 @@ class DevicesScreen extends ConsumerWidget {
           children: [
             const Icon(Icons.sd_storage_rounded, color: accentCyan, size: 14),
             const SizedBox(width: 4),
-            Text('${gb.toStringAsFixed(1)} GB', style: const TextStyle(color: textPrimary, fontSize: 11, fontWeight: FontWeight.bold)),
+            Text('${gb.toStringAsFixed(1)} GB', style: TextStyle(color: textPrimary, fontSize: 11, fontWeight: FontWeight.bold)),
           ],
         ),
-        const Text('Available', style: TextStyle(color: textMuted, fontSize: 9)),
+        Text('Available', style: TextStyle(color: textMuted, fontSize: 9)),
       ],
     );
   }
@@ -1371,7 +1395,76 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _nameController = TextEditingController();
   final _groupController = TextEditingController();
+  final _sharedFolderPathController = TextEditingController();
   String _selectedTheme = 'Obsidian Dark';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSharedFolderConfig();
+  }
+
+  Future<void> _loadSharedFolderConfig() async {
+    try {
+      final response = await Dio().get('http://127.0.0.1:7432/api/shared-folder/config');
+      if (response.statusCode == 200 && response.data != null) {
+        final path = response.data['path'] as String?;
+        if (path != null) {
+          setState(() {
+            _sharedFolderPathController.text = path;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Failed to load shared folder config: $e");
+    }
+  }
+
+  Future<void> _pickSharedFolder() async {
+    final selectedDir = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Select Central Shared Directory for LAN',
+    );
+    if (selectedDir != null) {
+      try {
+        await Dio().post(
+          'http://127.0.0.1:7432/api/shared-folder/config',
+          data: {'path': selectedDir},
+        );
+        setState(() {
+          _sharedFolderPathController.text = selectedDir;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Central shared folder updated: $selectedDir'),
+            backgroundColor: success,
+          ));
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Failed to update shared folder: $e'),
+            backgroundColor: danger,
+          ));
+        }
+      }
+    }
+  }
+
+  Future<void> _openSharedFolderInOs() async {
+    final currentPath = _sharedFolderPathController.text.trim();
+    if (currentPath.isEmpty) return;
+    try {
+      if (Platform.isMacOS) {
+        await Process.run('open', [currentPath]);
+      } else if (Platform.isWindows) {
+        await Process.run('explorer.exe', [currentPath]);
+      } else if (Platform.isLinux) {
+        await Process.run('xdg-open', [currentPath]);
+      }
+    } catch (e) {
+      debugPrint("Failed to open directory: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1386,46 +1479,139 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
           ),
           const SizedBox(height: 2),
-          const Text('Configure local node identifier and themes', style: TextStyle(color: textSecondary, fontSize: 13)),
+          Text('Configure local node identifier, central shared folder, and themes', style: TextStyle(color: textSecondary, fontSize: 13)),
           const SizedBox(height: 24),
-          // Configuration Panel
+
+          // Central Shared Storage Host Configuration
           Container(
             padding: const EdgeInsets.all(24),
+            margin: const EdgeInsets.only(bottom: 24),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.02),
-              border: Border.all(color: Colors.white.withOpacity(0.04)),
+              color: bgSurface,
+              border: Border.all(color: borderTheme),
               borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Node Configuration', style: TextStyle(color: textPrimary, fontWeight: FontWeight.w700, fontSize: 15)),
+                Row(
+                  children: [
+                    const Icon(Icons.folder_special_rounded, color: accent, size: 22),
+                    const SizedBox(width: 10),
+                    Text('Central Shared Storage (LAN Hub)', style: TextStyle(color: textPrimary, fontWeight: FontWeight.w700, fontSize: 15)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text('Select an existing OS directory on this computer to share with all connected LAN devices.', style: TextStyle(color: textSecondary, fontSize: 12.5)),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _sharedFolderPathController,
+                        readOnly: true,
+                        style: TextStyle(color: textPrimary, fontSize: 13.5, fontFamily: 'monospace'),
+                        decoration: InputDecoration(
+                          hintText: 'Default: ~/.lynqo/shared_folder',
+                          hintStyle: TextStyle(color: textMuted, fontSize: 13),
+                          filled: true,
+                          fillColor: bgElevated,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: borderTheme)),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: borderTheme)),
+                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: accent, width: 1.5)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    _GradientButton(
+                      label: 'Browse...',
+                      icon: Icons.folder_open_rounded,
+                      onPressed: _pickSharedFolder,
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.launch_rounded, color: accent, size: 16),
+                      label: const Text('Open in Finder/Explorer', style: TextStyle(color: accent, fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: accent.withOpacity(0.4)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                      ),
+                      onPressed: _openSharedFolderInOs,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // Configuration Panel
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: bgSurface,
+              border: Border.all(color: borderTheme),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Node Configuration', style: TextStyle(color: textPrimary, fontWeight: FontWeight.w700, fontSize: 15)),
                 const SizedBox(height: 16),
                 _buildTextField('Node Broadcast Name', _nameController, 'e.g. Mahesh\'s MacBook Pro'),
                 const SizedBox(height: 16),
                 _buildTextField('LAN Mesh Group Name', _groupController, 'e.g. Home, Office'),
                 const SizedBox(height: 20),
-                const Text('Visual Theme Preference', style: TextStyle(color: textPrimary, fontWeight: FontWeight.w600, fontSize: 13)),
+                Text('Visual Theme Preference', style: TextStyle(color: textPrimary, fontWeight: FontWeight.w600, fontSize: 13)),
                 const SizedBox(height: 8),
-                Row(
-                  children: ['Obsidian Dark', 'Midnight Ocean', 'Cyberpunk Pink'].map((theme) {
-                    final isSel = _selectedTheme == theme;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(
-                        label: Text(theme),
-                        selected: isSel,
-                        onSelected: (_) => setState(() => _selectedTheme = theme),
-                        backgroundColor: Colors.white.withOpacity(0.02),
-                        selectedColor: accent.withOpacity(0.12),
-                        labelStyle: TextStyle(color: isSel ? accent : textSecondary, fontSize: 12.5, fontWeight: FontWeight.w600),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          side: BorderSide(color: isSel ? accent.withOpacity(0.3) : Colors.white.withOpacity(0.05)),
+                Consumer(
+                  builder: (context, ref, _) {
+                    final themeMode = ref.watch(appThemeModeProvider);
+                    return Row(
+                      children: [
+                        ChoiceChip(
+                          label: const Text('Light Mode (macOS)'),
+                          selected: themeMode == AppThemeMode.light,
+                          onSelected: (_) {
+                            ref.read(appThemeModeProvider.notifier).state = AppThemeMode.light;
+                            applyTheme(AppThemeMode.light);
+                            setState(() {});
+                          },
+                          backgroundColor: bgElevated,
+                          selectedColor: accent,
+                          labelStyle: TextStyle(color: themeMode == AppThemeMode.light ? Colors.white : textPrimary, fontSize: 12.5, fontWeight: FontWeight.w600),
                         ),
-                      ),
+                        const SizedBox(width: 8),
+                        ChoiceChip(
+                          label: const Text('Obsidian Dark'),
+                          selected: themeMode == AppThemeMode.dark,
+                          onSelected: (_) {
+                            ref.read(appThemeModeProvider.notifier).state = AppThemeMode.dark;
+                            applyTheme(AppThemeMode.dark);
+                            setState(() {});
+                          },
+                          backgroundColor: bgElevated,
+                          selectedColor: accent,
+                          labelStyle: TextStyle(color: themeMode == AppThemeMode.dark ? Colors.white : textPrimary, fontSize: 12.5, fontWeight: FontWeight.w600),
+                        ),
+                      ],
                     );
-                  }).toList(),
+                  },
                 ),
                 const SizedBox(height: 28),
                 Row(
@@ -1466,27 +1652,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+
   Widget _buildTextField(String label, TextEditingController controller, String hint) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: textSecondary, fontWeight: FontWeight.w600, fontSize: 12)),
+        Text(label, style: TextStyle(color: textSecondary, fontWeight: FontWeight.w600, fontSize: 12)),
         const SizedBox(height: 6),
         TextField(
           controller: controller,
-          style: const TextStyle(color: textPrimary, fontSize: 13.5),
+          style: TextStyle(color: textPrimary, fontSize: 13.5),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: const TextStyle(color: textMuted, fontSize: 13),
+            hintStyle: TextStyle(color: textMuted, fontSize: 13),
             filled: true,
-            fillColor: Colors.black.withOpacity(0.2),
+            fillColor: bgElevated,
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             border: OutlineInputBorder(
-              borderSide: BorderSide(color: Colors.white.withOpacity(0.05)),
+              borderSide: BorderSide(color: borderTheme),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderSide: BorderSide(color: borderTheme),
               borderRadius: BorderRadius.circular(8),
             ),
             focusedBorder: OutlineInputBorder(
-              borderSide: const BorderSide(color: borderTheme),
+              borderSide: const BorderSide(color: accent, width: 1.5),
               borderRadius: BorderRadius.circular(8),
             ),
           ),
@@ -1508,7 +1699,7 @@ Widget _buildEmptyState(IconData icon, String message) {
         Text(
           message,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: textMuted, fontSize: 13, height: 1.4),
+          style: TextStyle(color: textMuted, fontSize: 13, height: 1.4),
         ),
       ],
     ),
@@ -1570,6 +1761,303 @@ class _GradientButton extends StatelessWidget {
       ),
     );
   }
+}
+
+void _showPublicShareDialog(BuildContext context, SharedFile f) {
+  final pwdController = TextEditingController();
+  final maxDController = TextEditingController();
+  final expHController = TextEditingController();
+
+  showDialog(
+    context: context,
+    builder: (ctx) => Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        width: 440,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: bgSurface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: borderTheme),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.18),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Doodle Header Badge
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    gradient: gradCyan,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: accentCyan.withOpacity(0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.public_rounded, color: Colors.white, size: 24),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text('Public Share Link',
+                              style: TextStyle(fontSize: 17, color: textPrimary, fontWeight: FontWeight.w800, letterSpacing: -0.3)),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: accentCyan.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text('✨ Instant', style: TextStyle(color: accentCyan, fontSize: 10, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text('Stream directly over internet without cloud upload.',
+                          style: TextStyle(color: textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+
+            // File Info Doodle Box
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: bgElevated,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: borderTheme),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.insert_drive_file_rounded, color: accent, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(f.fileName,
+                            style: TextStyle(color: textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${(f.fileSize / 1024 / 1024).toStringAsFixed(1)} MB · End-to-End Encrypted Tunnel 🔒',
+                          style: TextStyle(color: textMuted, fontSize: 11, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            // Form Inputs with High Contrast
+            TextField(
+              controller: pwdController,
+              obscureText: true,
+              style: TextStyle(color: textPrimary, fontSize: 13.5),
+              decoration: InputDecoration(
+                labelText: 'Optional Password',
+                labelStyle: TextStyle(color: textSecondary, fontSize: 12.5, fontWeight: FontWeight.w500),
+                prefixIcon: Icon(Icons.lock_outline_rounded, color: accent, size: 18),
+                filled: true,
+                fillColor: bgElevated,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderTheme)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderTheme)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: accentCyan, width: 1.5)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: maxDController,
+              keyboardType: TextInputType.number,
+              style: TextStyle(color: textPrimary, fontSize: 13.5),
+              decoration: InputDecoration(
+                labelText: 'Optional Max Download Limit (e.g. 5)',
+                labelStyle: TextStyle(color: textSecondary, fontSize: 12.5, fontWeight: FontWeight.w500),
+                prefixIcon: Icon(Icons.downloading_rounded, color: accentCyan, size: 18),
+                filled: true,
+                fillColor: bgElevated,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderTheme)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderTheme)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: accentCyan, width: 1.5)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: expHController,
+              keyboardType: TextInputType.number,
+              style: TextStyle(color: textPrimary, fontSize: 13.5),
+              decoration: InputDecoration(
+                labelText: 'Optional Expiration in Hours (e.g. 24)',
+                labelStyle: TextStyle(color: textSecondary, fontSize: 12.5, fontWeight: FontWeight.w500),
+                prefixIcon: Icon(Icons.timer_outlined, color: warning, size: 18),
+                filled: true,
+                fillColor: bgElevated,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderTheme)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderTheme)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: accentCyan, width: 1.5)),
+              ),
+            ),
+            const SizedBox(height: 22),
+
+            // Action Buttons
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  ),
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text('Cancel', style: TextStyle(color: textSecondary, fontWeight: FontWeight.w600, fontSize: 13)),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: gradCyan,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: accentCyan.withOpacity(0.35),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.link_rounded, size: 18, color: Colors.white),
+                    label: const Text('Generate Public Link 🚀', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white)),
+                    onPressed: () async {
+            Navigator.pop(ctx);
+            try {
+              final dio = Dio();
+              final res = await dio.post(
+                'http://127.0.0.1:7432/api/files/${f.id}/public-share',
+                data: {
+                  'password': pwdController.text.trim().isEmpty ? null : pwdController.text.trim(),
+                  'max_downloads': int.tryParse(maxDController.text.trim()),
+                  'expires_hours': int.tryParse(expHController.text.trim()),
+                },
+              );
+              final token = res.data['token'];
+              if (token != null) {
+                final rawUrl = res.data['public_url'] as String? ?? 'https://share.lynqo.app/public/s/$token';
+                final isVideo = ['mp4', 'mov', 'mkv', 'webm', 'm4v', 'avi']
+                    .contains(f.fileName.split('.').last.toLowerCase());
+
+                if (isVideo) {
+                  final reviewUrl = rawUrl.replaceAll('/public/s/', '/public/v/');
+                  await Clipboard.setData(ClipboardData(text: reviewUrl));
+
+                  if (context.mounted) {
+                    showDialog(
+                      context: context,
+                      builder: (c) => AlertDialog(
+                        backgroundColor: bgSurface,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: borderTheme)),
+                        title: Row(
+                          children: [
+                            const Icon(Icons.movie_creation_rounded, color: accent, size: 22),
+                            const SizedBox(width: 8),
+                            Text('Video Review Page Link Ready! 🎬', style: TextStyle(color: textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Reviewers can stream this video instantly and leave timestamped feedback notes.', style: TextStyle(color: textSecondary, fontSize: 12.5)),
+                            const SizedBox(height: 12),
+                            SelectableText(reviewUrl, style: const TextStyle(color: accentCyan, fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'monospace')),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () {
+                              Clipboard.setData(ClipboardData(text: rawUrl));
+                              Navigator.pop(c);
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Raw File Download Link Copied: $rawUrl'), backgroundColor: success));
+                            },
+                            child: Text('Copy Raw Download Link', style: TextStyle(color: textSecondary)),
+                          ),
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(backgroundColor: accentCyan, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                            icon: const Icon(Icons.copy_rounded, size: 16),
+                            label: const Text('Copy Interactive Review Link 🎬', style: TextStyle(fontWeight: FontWeight.bold)),
+                            onPressed: () {
+                              Clipboard.setData(ClipboardData(text: reviewUrl));
+                              Navigator.pop(c);
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Interactive Video Review Link Copied! 🎬\n$reviewUrl'), backgroundColor: success));
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                } else {
+                  await Clipboard.setData(ClipboardData(text: rawUrl));
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Public Link Copied: $rawUrl'),
+                        backgroundColor: success,
+                        duration: const Duration(seconds: 4),
+                      ),
+                    );
+                  }
+                }
+              }
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Failed to generate public share: $e'), backgroundColor: danger),
+                );
+              }
+            }
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 // Compact File Item Row
@@ -1646,12 +2134,12 @@ Widget _buildFileItem(BuildContext context, SharedFile f, WidgetRef ref, {bool s
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(f.fileName,
-                          style: const TextStyle(color: textPrimary, fontWeight: FontWeight.w600, fontSize: 13.5),
+                          style: TextStyle(color: textPrimary, fontWeight: FontWeight.w600, fontSize: 13.5),
                           maxLines: 1, overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 2),
                       Text(
                         '${(f.fileSize / 1024 / 1024).toStringAsFixed(1)} MB · ${f.downloadCount} transfers',
-                        style: const TextStyle(color: textMuted, fontSize: 11),
+                        style: TextStyle(color: textMuted, fontSize: 11),
                       ),
                     ],
                   ),
@@ -1659,6 +2147,11 @@ Widget _buildFileItem(BuildContext context, SharedFile f, WidgetRef ref, {bool s
               ],
             ),
           ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.public_rounded, color: accentCyan, size: 18),
+          onPressed: () => _showPublicShareDialog(context, f),
+          tooltip: 'Create Public Internet Link',
         ),
         if (isMedia)
           IconButton(
@@ -1671,13 +2164,176 @@ Widget _buildFileItem(BuildContext context, SharedFile f, WidgetRef ref, {bool s
           onPressed: () => _downloadFile(context, f),
           tooltip: 'Save Local',
         ),
-        if (showDelete)
-          IconButton(
-            icon: const Icon(Icons.delete_outline_rounded, color: danger, size: 18),
-            onPressed: () => ref.read(apiServiceProvider).revokeFile(f.id),
-            tooltip: 'Remove',
-          ),
+        PopupMenuButton<String>(
+          icon: Icon(Icons.more_vert_rounded, color: textMuted, size: 18),
+          color: const Color(0xFF1E293B),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          onSelected: (val) {
+            if (val == 'public') {
+              _showPublicShareDialog(context, f);
+            } else if (val == 'preview') {
+              _previewMedia(context, f);
+            } else if (val == 'download') {
+              _downloadFile(context, f);
+            } else if (val == 'delete') {
+              ref.read(apiServiceProvider).revokeFile(f.id);
+            }
+          },
+          itemBuilder: (ctx) => [
+            PopupMenuItem(
+              value: 'public',
+              child: Row(
+                children: [
+                  Icon(Icons.public_rounded, color: accentCyan, size: 16),
+                  const SizedBox(width: 8),
+                  const Text('Create Public Link', style: TextStyle(color: Colors.white, fontSize: 13)),
+                ],
+              ),
+            ),
+            if (isMedia)
+              PopupMenuItem(
+                value: 'preview',
+                child: Row(
+                  children: [
+                    Icon(Icons.visibility_rounded, color: accent, size: 16),
+                    const SizedBox(width: 8),
+                    const Text('Preview Media', style: TextStyle(color: Colors.white, fontSize: 13)),
+                  ],
+                ),
+              ),
+            if (isMedia)
+              PopupMenuItem(
+                value: 'review_notes',
+                child: Row(
+                  children: [
+                    const Icon(Icons.movie_creation_rounded, color: accentCyan, size: 16),
+                    const SizedBox(width: 8),
+                    const Text('View Review Notes 🎬', style: TextStyle(color: Colors.white, fontSize: 13)),
+                  ],
+                ),
+              ),
+            PopupMenuItem(
+              value: 'download',
+              child: Row(
+                children: [
+                  Icon(Icons.file_download_rounded, color: success, size: 16),
+                  const SizedBox(width: 8),
+                  const Text('Save Local Copy', style: TextStyle(color: Colors.white, fontSize: 13)),
+                ],
+              ),
+            ),
+            if (showDelete)
+              PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline_rounded, color: danger, size: 16),
+                    const SizedBox(width: 8),
+                    const Text('Remove File', style: TextStyle(color: danger, fontSize: 13)),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ],
+    ),
+  );
+}
+
+void _showVideoReviewNotesDialog(BuildContext context, SharedFile f) {
+  showDialog(
+    context: context,
+    builder: (ctx) => Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        width: 480,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: bgSurface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: borderTheme),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.18),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    gradient: gradCyan,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.movie_creation_rounded, color: Colors.white, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Client Video Review Notes 🎬', style: TextStyle(color: textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
+                      Text(f.fileName, style: TextStyle(color: textSecondary, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: bgElevated,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: borderTheme),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded, color: accent, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Clients add timeline notes on your shared link (https://<tunnel>/public/v/<token>). Notes stream back here live!',
+                      style: TextStyle(color: textSecondary, fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.public_rounded, size: 16, color: accentCyan),
+                  label: const Text('Create New Review Link 🚀', style: TextStyle(color: accentCyan, fontSize: 12.5, fontWeight: FontWeight.bold)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: accentCyan),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _showPublicShareDialog(context, f);
+                  },
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text('Close', style: TextStyle(color: textSecondary)),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     ),
   );
 }
@@ -1707,7 +2363,7 @@ Widget _buildClipItem(ClipboardEntry c, BuildContext context) {
   } else {
     bodyWidget = Text(
       c.content,
-      style: const TextStyle(color: textPrimary, fontFamily: 'monospace', fontSize: 12),
+      style: TextStyle(color: textPrimary, fontFamily: 'monospace', fontSize: 12),
       maxLines: 3,
       overflow: TextOverflow.ellipsis,
     );
@@ -1752,7 +2408,7 @@ Widget _buildClipItem(ClipboardEntry c, BuildContext context) {
                       ),
                     ),
                   ),
-                  const Text('click to copy', style: TextStyle(color: textMuted, fontSize: 10.5, fontWeight: FontWeight.w500)),
+                  Text('click to copy', style: TextStyle(color: textMuted, fontSize: 10.5, fontWeight: FontWeight.w500)),
                 ],
               ),
             ],
@@ -2260,5 +2916,532 @@ class _ClipboardPopupState extends ConsumerState<ClipboardPopup>
     } catch (e) {
       debugPrint("[_selectItem] Error selecting item: $e");
     }
+  }
+}
+
+// ── Video Review Studio Screen (Editor ↔ Client Communication Hub) ───────────
+
+class VideoReviewStudioScreen extends ConsumerStatefulWidget {
+  const VideoReviewStudioScreen({super.key});
+
+  @override
+  ConsumerState<VideoReviewStudioScreen> createState() => _VideoReviewStudioScreenState();
+}
+
+class _VideoReviewStudioScreenState extends ConsumerState<VideoReviewStudioScreen> {
+  SharedFile? _selectedFile;
+  String? _shareToken;
+  String? _reviewUrl;
+  List<dynamic> _comments = [];
+  bool _isLoading = false;
+  bool _isClientTyping = false;
+  StreamSubscription? _wsSub;
+  Timer? _typingTimer;
+  final _replyController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _selectDefaultVideo();
+      _setupWsListener();
+    });
+  }
+
+  void _setupWsListener() {
+    _wsSub?.cancel();
+    final wsClient = ref.read(wsClientProvider);
+    _wsSub = wsClient.rawStream.listen((event) {
+      final type = event['type'] as String?;
+      if (type == 'video_comment_added') {
+        if (_selectedFile != null) {
+          _fetchCommentsForFile(_selectedFile!.id);
+        }
+      } else if (type == 'video_typing') {
+        final token = event['share_token'] as String?;
+        final author = event['author_name'] as String? ?? '';
+        final isTyping = event['is_typing'] as bool? ?? false;
+
+        if (token == _shareToken && !author.contains('Editor')) {
+          if (mounted) {
+            setState(() {
+              _isClientTyping = isTyping;
+            });
+          }
+          if (isTyping) {
+            _typingTimer?.cancel();
+            _typingTimer = Timer(const Duration(seconds: 3), () {
+              if (mounted) setState(() => _isClientTyping = false);
+            });
+          }
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _wsSub?.cancel();
+    _typingTimer?.cancel();
+    _replyController.dispose();
+    super.dispose();
+  }
+
+  void _selectDefaultVideo() {
+    final files = ref.read(sharedFilesProvider);
+    final videoFiles = files.where((f) => ['mp4', 'mov', 'mkv', 'webm', 'm4v', 'avi'].contains(f.fileName.split('.').last.toLowerCase())).toList();
+    if (videoFiles.isNotEmpty && _selectedFile == null) {
+      _onSelectFile(videoFiles.first);
+    }
+  }
+
+  Future<void> _onSelectFile(SharedFile f) async {
+    setState(() {
+      _selectedFile = f;
+      _isLoading = true;
+      _comments = [];
+    });
+
+    try {
+      final dio = Dio();
+      final res = await dio.post(
+        'http://127.0.0.1:7432/api/files/${f.id}/public-share',
+        data: {},
+      );
+
+      if (res.statusCode == 200 && res.data != null) {
+        final token = res.data['token'] as String?;
+        final rawUrl = res.data['public_url'] as String?;
+        if (token != null) {
+          final reviewUrl = (rawUrl ?? 'https://share.lynqo.app/public/s/$token').replaceAll('/public/s/', '/public/v/');
+          setState(() {
+            _shareToken = token;
+            _reviewUrl = reviewUrl;
+          });
+        }
+      }
+      await _fetchCommentsForFile(f.id);
+    } catch (e) {
+      debugPrint("Failed to initialize review link: $e");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _fetchCommentsForFile(String fileId) async {
+    try {
+      final res = await Dio().get('http://127.0.0.1:7432/api/files/$fileId/video-comments');
+      if (res.statusCode == 200 && res.data is List) {
+        if (mounted) {
+          setState(() {
+            _comments = res.data as List;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Failed to fetch comments: $e");
+    }
+  }
+
+  Future<void> _sendEditorReply() async {
+    final text = _replyController.text.trim();
+    if (text.isEmpty || _shareToken == null || _selectedFile == null) return;
+
+    try {
+      await Dio().post(
+        'http://127.0.0.1:7432/public/v/$_shareToken/comments',
+        data: {
+          'timestamp_sec': 0.0,
+          'author_name': '👑 Editor (Desktop App)',
+          'comment_text': text,
+        },
+      );
+      _replyController.clear();
+      if (_shareToken != null) {
+        ref.read(wsClientProvider).send({
+          'type': 'video_typing',
+          'share_token': _shareToken,
+          'author_name': '👑 Editor (Desktop App)',
+          'is_typing': false,
+        });
+      }
+      await _fetchCommentsForFile(_selectedFile!.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Editor reply broadcast live to Client! 🚀'),
+          backgroundColor: success,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Failed to send reply: $e'),
+          backgroundColor: danger,
+        ));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final files = ref.watch(sharedFilesProvider);
+    final videoFiles = files.where((f) => ['mp4', 'mov', 'mkv', 'webm', 'm4v', 'avi'].contains(f.fileName.split('.').last.toLowerCase())).toList();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 800;
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header Badge (Wrap to prevent overflow)
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 16,
+                runSpacing: 12,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ShaderMask(
+                        shaderCallback: (b) => gradCyan.createShader(b),
+                        child: const Text('Video Review Studio 🎬',
+                            style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+                      ),
+                      const SizedBox(height: 2),
+                      Text('Real-time feedback channel between Editor (Desktop) and Client (Browser)',
+                          style: TextStyle(color: textSecondary, fontSize: 12)),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: success.withOpacity(0.12),
+                      border: Border.all(color: success.withOpacity(0.3)),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.circle, color: success, size: 8),
+                        SizedBox(width: 6),
+                        Text('👑 Editor Host (Active)', style: TextStyle(color: success, fontSize: 11, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              if (videoFiles.isEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: bgSurface,
+                    border: Border.all(color: borderTheme),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        const Icon(Icons.movie_filter_rounded, color: accent, size: 44),
+                        const SizedBox(height: 12),
+                        Text('No Shared Video Files Found', style: TextStyle(color: textPrimary, fontSize: 15, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 4),
+                        Text('Drag and drop an .mp4, .mov, or .mkv video into Shared Files to start a review session.',
+                            style: TextStyle(color: textSecondary, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ),
+              ] else ...[
+                // Video Selector Pill Bar
+                SizedBox(
+                  height: 38,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: videoFiles.length,
+                    itemBuilder: (ctx, idx) {
+                      final vf = videoFiles[idx];
+                      final isSelected = _selectedFile?.id == vf.id;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          label: Text(vf.fileName, style: TextStyle(color: isSelected ? Colors.white : textPrimary, fontSize: 11.5, fontWeight: FontWeight.w600)),
+                          selected: isSelected,
+                          onSelected: (_) => _onSelectFile(vf),
+                          backgroundColor: bgElevated,
+                          selectedColor: accent,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Active Video Review Link Card
+                if (_reviewUrl != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: bgSurface,
+                      border: Border.all(color: accentCyan.withOpacity(0.3)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.public_rounded, color: accentCyan, size: 18),
+                            const SizedBox(width: 8),
+                            const Text('Client Public Review Web Link:', style: TextStyle(color: accentCyan, fontWeight: FontWeight.bold, fontSize: 11)),
+                            const Spacer(),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: accentCyan,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                              ),
+                              icon: const Icon(Icons.copy_rounded, size: 14),
+                              label: const Text('Copy Link', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                              onPressed: () {
+                                Clipboard.setData(ClipboardData(text: _reviewUrl!));
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Review Link Copied: $_reviewUrl'), backgroundColor: success));
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        SelectableText(_reviewUrl!, style: TextStyle(color: textPrimary, fontSize: 12, fontFamily: 'monospace', fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                ],
+
+                // Main Studio Content Layout (Stack vertically when narrow)
+                Flex(
+                  direction: isNarrow ? Axis.vertical : Axis.horizontal,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Video Preview Card
+                    Flexible(
+                      flex: isNarrow ? 0 : 3,
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        margin: EdgeInsets.only(bottom: isNarrow ? 16 : 0, right: isNarrow ? 0 : 16),
+                        decoration: BoxDecoration(
+                          color: bgSurface,
+                          border: Border.all(color: borderTheme),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(child: Text(_selectedFile?.fileName ?? 'Video File', style: TextStyle(color: textPrimary, fontWeight: FontWeight.bold, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                Text('${((_selectedFile?.fileSize ?? 0) / 1024 / 1024).toStringAsFixed(1)} MB', style: TextStyle(color: textMuted, fontSize: 11)),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              width: double.infinity,
+                              height: 240,
+                              decoration: BoxDecoration(
+                                color: Colors.black,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: borderTheme),
+                              ),
+                              clipBehavior: Clip.antiAlias,
+                              child: _selectedFile != null
+                                  ? Image.network(
+                                      'http://127.0.0.1:7432/api/files/${_selectedFile!.id}/thumbnail',
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Center(
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            const Icon(Icons.play_circle_fill_rounded, color: accent, size: 48),
+                                            const SizedBox(height: 6),
+                                            Text('Streaming Ready over P2P Tunnel', style: TextStyle(color: textSecondary, fontSize: 11)),
+                                          ],
+                                        ),
+                                      ),
+                                    )
+                                  : Container(),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // Client Notes Feed & Editor Reply Box
+                    Flexible(
+                      flex: isNarrow ? 0 : 2,
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: bgSurface,
+                          border: Border.all(color: borderTheme),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('Client Review Stream', style: TextStyle(color: textPrimary, fontWeight: FontWeight.bold, fontSize: 14)),
+                                IconButton(
+                                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                                  onPressed: () {
+                                    if (_selectedFile != null) _fetchCommentsForFile(_selectedFile!.id);
+                                  },
+                                  tooltip: 'Refresh Notes',
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+
+                            // Comments List
+                            if (_isLoading)
+                              const Center(child: CircularProgressIndicator())
+                            else if (_comments.isEmpty)
+                              Container(
+                                padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 12),
+                                child: Center(
+                                  child: Text('No notes received yet.\nClient feedback notes will stream here live!',
+                                      textAlign: TextAlign.center, style: TextStyle(color: textMuted, fontSize: 12)),
+                                ),
+                              )
+                            else
+                              SizedBox(
+                                height: 200,
+                                child: ListView.builder(
+                                  itemCount: _comments.length,
+                                  itemBuilder: (ctx, idx) {
+                                    final c = _comments[idx];
+                                    final author = c['author_name'] as String? ?? 'Reviewer';
+                                    final text = c['comment_text'] as String? ?? '';
+                                    final timeSec = (c['timestamp_sec'] as num?)?.toDouble() ?? 0.0;
+
+                                    final isEditor = author.contains('Editor');
+                                    return Container(
+                                      margin: const EdgeInsets.only(bottom: 6),
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: bgElevated,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: isEditor ? accent.withOpacity(0.3) : borderTheme),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Text(
+                                                '${isEditor ? '👑' : '👤'} $author',
+                                                style: TextStyle(color: isEditor ? accent : textPrimary, fontWeight: FontWeight.bold, fontSize: 11),
+                                              ),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                                decoration: BoxDecoration(
+                                                  color: success.withOpacity(0.1),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: Text(
+                                                  '⏱ ${timeSec.toStringAsFixed(1)}s',
+                                                  style: const TextStyle(color: success, fontSize: 9.5, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Text(text, style: TextStyle(color: textPrimary, fontSize: 12)),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+
+                            const SizedBox(height: 8),
+                            if (_isClientTyping) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                margin: const EdgeInsets.only(bottom: 8),
+                                decoration: BoxDecoration(
+                                  color: success.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: success.withOpacity(0.3)),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.mode_comment_outlined, color: success, size: 14),
+                                    SizedBox(width: 6),
+                                    Text('👤 Client is typing a note...', style: TextStyle(color: success, fontSize: 11.5, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                              ),
+                            ],
+
+                            // Editor Reply Input Box
+                            TextField(
+                              controller: _replyController,
+                              style: TextStyle(color: textPrimary, fontSize: 12),
+                              onChanged: (val) {
+                                if (_shareToken != null) {
+                                  ref.read(wsClientProvider).send({
+                                    'type': 'video_typing',
+                                    'share_token': _shareToken,
+                                    'author_name': '👑 Editor (Desktop App)',
+                                    'is_typing': val.trim().isNotEmpty,
+                                  });
+                                }
+                              },
+                              decoration: InputDecoration(
+                                hintText: 'Type Editor reply to Client...',
+                                hintStyle: TextStyle(color: textMuted, fontSize: 11.5),
+                                filled: true,
+                                fillColor: bgElevated,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: borderTheme)),
+                                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: borderTheme)),
+                                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: accent, width: 1.5)),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(backgroundColor: accent, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6))),
+                                icon: const Icon(Icons.send_rounded, size: 14),
+                                label: const Text('Send Reply to Client 🚀', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5)),
+                                onPressed: _sendEditorReply,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
   }
 }

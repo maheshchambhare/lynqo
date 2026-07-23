@@ -215,6 +215,9 @@ async fn handle_incoming(text: &str, state: &AppState, device_id: &str) {
                 }
             }
         }
+        "video_typing" => {
+            state.ws_hub.broadcast(text.to_string());
+        }
         _ => {}
     }
 }

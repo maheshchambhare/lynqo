@@ -1,0 +1,1 @@
+cargo:rustc-env=MIME_TYPES_GENERATED_PATH=/Users/mahesh/Desktop/Projects/backend/lynqo/target/release/build/mime_guess-4b0c245bbde15d9e/out/mime_types_generated.rs

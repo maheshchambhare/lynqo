@@ -1,89 +1,90 @@
-import { Monitor, Wifi } from 'lucide-react';
-import { formatTime, getDeviceInitial } from '../utils';
+import { Monitor, Wifi, ShieldCheck, Laptop } from 'lucide-react';
+import { formatTime } from '../utils';
 import type { useStore } from '../hooks/useStore';
-import Sparkline from '../components/Sparkline';
-import { useMemo } from 'react';
 
 type StoreType = ReturnType<typeof useStore>;
 
-function getDeviceColor(name: string): string {
-  const colors = [
-    'var(--grad-purple)',
-    'var(--grad-cyan)',
-    'var(--grad-pink)',
-    'var(--grad-green)',
-    'var(--grad-orange)',
-  ];
-  const hash = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  return colors[hash % colors.length];
-}
-
 export default function DevicesPage({ store }: { store: StoreType }) {
-  const activityData = useMemo(
-    () => Array.from({ length: 10 }, (_, i) => Math.max(0, store.devices.length - (9 - i))),
-    [store.devices.length]
-  );
-
   return (
-    <div>
+    <div className="page-container">
+      {/* Header */}
       <div className="page-header">
-        <h1 className="page-title">Devices</h1>
-        <p className="page-subtitle">All devices seen on the local network</p>
-      </div>
-
-      {/* Overview card */}
-      <div className="stats-banner purple">
-        <div className="stats-banner-glow" />
-        <div className="stats-content">
-          <div className="stats-item">
-            <div className="stats-label">Network Activity</div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <span className="stats-number">{store.devices.length}</span>
-              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>nodes active</span>
-            </div>
-          </div>
-        </div>
-        <div className="stats-chart">
-          <Sparkline data={activityData} color="#818CF8" height={40} />
-        </div>
-        <div className="stats-badge-icon">
-          <Wifi size={22} color="var(--accent-3)" />
+        <div>
+          <h2 className="page-title">
+            <Monitor size={22} style={{ color: 'var(--accent-apple-blue)' }} />
+            Connected LAN Devices
+          </h2>
+          <p className="page-subtitle">Discovered Mesh Nodes on the Local Wi-Fi Network</p>
         </div>
       </div>
 
+      {/* Devices Grid */}
+      <div className="folder-section-title">Active Mesh Nodes ({store.devices.length})</div>
       {store.devices.length === 0 ? (
-        <div className="card">
-          <div className="empty-state" style={{ paddingTop: 60, paddingBottom: 60 }}>
-            <Monitor size={40} />
-            <p>No devices detected yet</p>
-            <p style={{ fontSize: 12, opacity: 0.6 }}>
-              Open lynqo on another device on the same Wi-Fi
-            </p>
-          </div>
+        <div className="empty-state-box">
+          <Wifi size={44} style={{ margin: '0 auto 0.75rem auto', opacity: 0.35, color: 'var(--text-muted)' }} />
+          <p className="empty-state-title">No other devices detected</p>
+          <p className="empty-state-sub">Open Lynqo on another phone, tablet, or PC on the same Wi-Fi network to connect automatically</p>
         </div>
       ) : (
-        <div className="device-list">
+        <div className="finder-grid">
           {store.devices.map((d) => (
-            <div className="device-item" key={d.id} id={`device-${d.id}`}>
-              <div
-                className="device-avatar"
-                style={{ background: getDeviceColor(d.name) }}
-              >
-                {getDeviceInitial(d.name)}
-              </div>
-              <div className="device-info">
-                <div className="device-name">{d.name}</div>
-                <div className="device-meta">
-                  {d.ip_address ?? 'unknown IP'}
-                  {d.user_agent ? ` · ${d.user_agent.slice(0, 60)}` : ''}
+            <div
+              key={d.id}
+              style={{
+                background: 'var(--bg-card)',
+                borderRadius: '16px',
+                border: '1px solid var(--border-subtle)',
+                padding: '1.25rem',
+                boxShadow: 'var(--shadow-card)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                height: '160px',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div
+                  style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '10px',
+                    background: 'linear-gradient(135deg, #007AFF, #5856D6)',
+                    color: '#FFF',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Laptop size={20} />
                 </div>
-                <div style={{ marginTop: 4, fontSize: 10.5, color: 'var(--text-muted)' }}>
-                  Last seen {formatTime(d.last_seen)}
-                </div>
+                <span
+                  style={{
+                    background: 'rgba(52, 199, 89, 0.12)',
+                    color: '#34C759',
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    padding: '3px 8px',
+                    borderRadius: '12px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <ShieldCheck size={12} /> Verified
+                </span>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-                <div className="device-badge">● Online</div>
-                <div className="online-indicator" />
+
+              <div>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '2px' }}>
+                  {d.name}
+                </h3>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                  {d.ip_address ?? 'LAN Mesh'}
+                </p>
+                <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Last active: {formatTime(d.last_seen)}
+                </p>
               </div>
             </div>
           ))}

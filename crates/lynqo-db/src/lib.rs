@@ -47,6 +47,22 @@ impl Database {
             let _ = conn.execute("ALTER TABLE transfer_history ADD COLUMN status TEXT NOT NULL DEFAULT 'completed'", []);
             let _ = conn.execute("ALTER TABLE transfer_history ADD COLUMN transferred_bytes INTEGER NOT NULL DEFAULT 0", []);
             let _ = conn.execute("ALTER TABLE transfer_history ADD COLUMN total_bytes INTEGER NOT NULL DEFAULT 0", []);
+
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS video_comments (
+                    id            TEXT PRIMARY KEY,
+                    share_token   TEXT NOT NULL,
+                    timestamp_sec REAL NOT NULL DEFAULT 0.0,
+                    author_name   TEXT NOT NULL DEFAULT 'Reviewer',
+                    comment_text  TEXT NOT NULL,
+                    created_at    INTEGER NOT NULL
+                );",
+                [],
+            )?;
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_video_comments_token ON video_comments(share_token, timestamp_sec);",
+                [],
+            )?;
             Ok(())
         })
         .await
@@ -248,6 +264,211 @@ impl Database {
         Ok(())
     }
 
+    // ── Public Shares ─────────────────────────────────────────────────────────
+
+    pub async fn create_public_share(&self, share: &lynqo_core::PublicShare) -> Result<()> {
+        let share = share.clone();
+        let conn = self.pool.get().await?;
+        conn.interact(move |conn| {
+            conn.execute(
+                "INSERT INTO public_shares (token, file_id, password_hash, max_downloads, download_count, expires_at, created_at, revoked) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    share.token,
+                    share.file_id,
+                    share.password_hash,
+                    share.max_downloads,
+                    share.download_count as i64,
+                    share.expires_at,
+                    share.created_at,
+                    share.revoked as i64
+                ],
+            )?;
+            Ok::<_, rusqlite::Error>(())
+        })
+        .await
+        .map_err(|e| anyhow!("{e}"))?
+        .map_err(|e: rusqlite::Error| anyhow!("{e}"))?;
+        Ok(())
+    }
+
+    pub async fn get_public_share(&self, token: &str) -> Result<Option<lynqo_core::PublicShare>> {
+        let token = token.to_string();
+        let conn = self.pool.get().await?;
+        let res = conn
+            .interact(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT token, file_id, password_hash, max_downloads, download_count, expires_at, created_at, revoked \
+                     FROM public_shares WHERE token=?1 AND revoked=0",
+                )?;
+                let share = stmt
+                    .query_row(params![token], |row| {
+                        let download_count_i: i64 = row.get(4)?;
+                        let max_downloads_i: Option<i64> = row.get(3)?;
+                        let revoked_i: i64 = row.get(7)?;
+                        Ok(lynqo_core::PublicShare {
+                            token: row.get(0)?,
+                            file_id: row.get(1)?,
+                            password_hash: row.get(2)?,
+                            max_downloads: max_downloads_i.map(|v| v as u64),
+                            download_count: download_count_i as u64,
+                            expires_at: row.get(5)?,
+                            created_at: row.get(6)?,
+                            revoked: revoked_i != 0,
+                        })
+                    })
+                    .optional()?;
+                Ok::<_, rusqlite::Error>(share)
+            })
+            .await
+            .map_err(|e| anyhow!("{e}"))?
+            .map_err(|e: rusqlite::Error| anyhow!("{e}"))?;
+        Ok(res)
+    }
+
+    pub async fn increment_public_share_download(&self, token: &str) -> Result<()> {
+        let token = token.to_string();
+        let conn = self.pool.get().await?;
+        conn.interact(move |conn| {
+            conn.execute(
+                "UPDATE public_shares SET download_count=download_count+1 WHERE token=?1",
+                params![token],
+            )?;
+            Ok::<_, rusqlite::Error>(())
+        })
+        .await
+        .map_err(|e| anyhow!("{e}"))?
+        .map_err(|e: rusqlite::Error| anyhow!("{e}"))?;
+        Ok(())
+    }
+
+    pub async fn revoke_public_share(&self, token: &str) -> Result<bool> {
+        let token = token.to_string();
+        let conn = self.pool.get().await?;
+        let n = conn
+            .interact(move |conn| {
+                conn.execute(
+                    "UPDATE public_shares SET revoked=1 WHERE token=?1",
+                    params![token],
+                )
+            })
+            .await
+            .map_err(|e| anyhow!("{e}"))?
+            .map_err(|e: rusqlite::Error| anyhow!("{e}"))?;
+        Ok(n > 0)
+    }
+
+    // ── Video Comments ───────────────────────────────────────────────────────
+
+    pub async fn add_video_comment(&self, comment: &lynqo_core::VideoComment) -> Result<()> {
+        let comment = comment.clone();
+        let conn = self.pool.get().await?;
+        conn.interact(move |conn| {
+            conn.execute(
+                "INSERT INTO video_comments (id, share_token, timestamp_sec, author_name, comment_text, created_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    comment.id,
+                    comment.share_token,
+                    comment.timestamp_sec,
+                    comment.author_name,
+                    comment.comment_text,
+                    comment.created_at,
+                ],
+            )?;
+            Ok::<_, rusqlite::Error>(())
+        })
+        .await
+        .map_err(|e| anyhow!("{e}"))?
+        .map_err(|e: rusqlite::Error| anyhow!("{e}"))?;
+        Ok(())
+    }
+
+    pub async fn list_video_comments(&self, share_token: &str) -> Result<Vec<lynqo_core::VideoComment>> {
+        let share_token = share_token.to_string();
+        let conn = self.pool.get().await?;
+        let comments = conn
+            .interact(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, share_token, timestamp_sec, author_name, comment_text, created_at \
+                     FROM video_comments WHERE share_token = ?1 ORDER BY timestamp_sec ASC",
+                )?;
+                let rows = stmt.query_map(params![share_token], |row| {
+                    Ok(lynqo_core::VideoComment {
+                        id: row.get(0)?,
+                        share_token: row.get(1)?,
+                        timestamp_sec: row.get(2)?,
+                        author_name: row.get(3)?,
+                        comment_text: row.get(4)?,
+                        created_at: row.get(5)?,
+                    })
+                })?;
+                rows.collect::<Result<Vec<_>, _>>()
+            })
+            .await
+            .map_err(|e| anyhow!("{e}"))?
+            .map_err(|e: rusqlite::Error| anyhow!("{e}"))?;
+        Ok(comments)
+    }
+
+    pub async fn list_video_comments_for_file(&self, file_id: &str) -> Result<Vec<lynqo_core::VideoComment>> {
+        let file_id = file_id.to_string();
+        let conn = self.pool.get().await?;
+        let comments = conn
+            .interact(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT vc.id, vc.share_token, vc.timestamp_sec, vc.author_name, vc.comment_text, vc.created_at \
+                     FROM video_comments vc \
+                     JOIN public_shares ps ON vc.share_token = ps.token \
+                     WHERE ps.file_id = ?1 ORDER BY vc.created_at ASC",
+                )?;
+                let rows = stmt.query_map(params![file_id], |row| {
+                    Ok(lynqo_core::VideoComment {
+                        id: row.get(0)?,
+                        share_token: row.get(1)?,
+                        timestamp_sec: row.get(2)?,
+                        author_name: row.get(3)?,
+                        comment_text: row.get(4)?,
+                        created_at: row.get(5)?,
+                    })
+                })?;
+                rows.collect::<Result<Vec<_>, _>>()
+            })
+            .await
+            .map_err(|e| anyhow!("{e}"))?
+            .map_err(|e: rusqlite::Error| anyhow!("{e}"))?;
+        Ok(comments)
+    }
+
+    pub async fn list_public_shares_for_file(&self, file_id: &str) -> Result<Vec<lynqo_core::PublicShare>> {
+        let file_id = file_id.to_string();
+        let conn = self.pool.get().await?;
+        let shares = conn
+            .interact(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT token, file_id, password_hash, max_downloads, download_count, expires_at, created_at, revoked \
+                     FROM public_shares WHERE file_id = ?1 AND revoked = 0 ORDER BY created_at DESC",
+                )?;
+                let rows = stmt.query_map(params![file_id], |row| {
+                    Ok(lynqo_core::PublicShare {
+                        token: row.get(0)?,
+                        file_id: row.get(1)?,
+                        password_hash: row.get(2)?,
+                        max_downloads: row.get(3)?,
+                        download_count: row.get(4)?,
+                        expires_at: row.get(5)?,
+                        created_at: row.get(6)?,
+                        revoked: row.get::<_, i64>(7)? != 0,
+                    })
+                })?;
+                rows.collect::<Result<Vec<_>, _>>()
+            })
+            .await
+            .map_err(|e| anyhow!("{e}"))?
+            .map_err(|e: rusqlite::Error| anyhow!("{e}"))?;
+        Ok(shares)
+    }
+
     // ── Devices ─────────────────────────────────────────────────────────────
 
     pub async fn upsert_device(&self, device: &Device) -> Result<()> {
@@ -426,6 +647,44 @@ impl Database {
             .map_err(|e: rusqlite::Error| anyhow!("{e}"))?;
         Ok(tasks)
     }
+
+    pub async fn get_setting(&self, key: &str) -> Result<Option<String>> {
+        let key = key.to_string();
+        let conn = self.pool.get().await?;
+        let value = conn
+            .interact(move |conn| {
+                let mut stmt = conn.prepare("SELECT value FROM app_settings WHERE key = ?1")?;
+                let mut rows = stmt.query(params![key])?;
+                if let Some(row) = rows.next()? {
+                    let val: String = row.get(0)?;
+                    Ok(Some(val))
+                } else {
+                    Ok(None)
+                }
+            })
+            .await
+            .map_err(|e| anyhow!("{e}"))?
+            .map_err(|e: rusqlite::Error| anyhow!("{e}"))?;
+        Ok(value)
+    }
+
+    pub async fn set_setting(&self, key: &str, value: &str) -> Result<()> {
+        let key = key.to_string();
+        let value = value.to_string();
+        let conn = self.pool.get().await?;
+        conn.interact(move |conn| {
+            conn.execute(
+                "INSERT INTO app_settings (key, value) VALUES (?1, ?2) \
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![key, value],
+            )?;
+            Ok::<_, rusqlite::Error>(())
+        })
+        .await
+        .map_err(|e| anyhow!("{e}"))?
+        .map_err(|e: rusqlite::Error| anyhow!("{e}"))?;
+        Ok(())
+    }
 }
 
 const MIGRATIONS: &str = r#"
@@ -485,4 +744,32 @@ CREATE TABLE IF NOT EXISTS transfer_history (
     total_bytes       INTEGER NOT NULL DEFAULT 0,
     created_at        INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS app_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public_shares (
+    token              TEXT PRIMARY KEY,
+    file_id            TEXT NOT NULL,
+    password_hash      TEXT,
+    max_downloads      INTEGER,
+    download_count     INTEGER NOT NULL DEFAULT 0,
+    expires_at         INTEGER,
+    created_at         INTEGER NOT NULL,
+    revoked            INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS video_comments (
+    id            TEXT PRIMARY KEY,
+    share_token   TEXT NOT NULL,
+    timestamp_sec REAL NOT NULL DEFAULT 0.0,
+    author_name   TEXT NOT NULL DEFAULT 'Reviewer',
+    comment_text  TEXT NOT NULL,
+    created_at    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_video_comments_token
+    ON video_comments(share_token, timestamp_sec);
 "#;
+

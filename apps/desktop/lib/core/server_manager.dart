@@ -85,27 +85,23 @@ class ServerManager {
     // 1. Check if the binary is bundled next to the executable (standard production packaging)
     final executablePath = Platform.resolvedExecutable;
     final executableDir = p.dirname(executablePath);
-    final bundledPath = p.join(executableDir, 'lynqo-server');
+    final bundledPathUnix = p.join(executableDir, 'lynqo-server');
+    final bundledPathWin = p.join(executableDir, 'lynqo-server.exe');
 
-    if (await File(bundledPath).exists()) {
-      return bundledPath;
+    if (await File(bundledPathUnix).exists()) {
+      return bundledPathUnix;
+    }
+    if (await File(bundledPathWin).exists()) {
+      return bundledPathWin;
     }
 
-    // 2. Traversal lookup: Start from the executable directory and walk up,
-    // searching for the target/release/lynqo-server or target/debug/lynqo-server
-    // in any parent directory (workspace root).
+    // 2. Traversal lookup: Compare release and debug binary timestamps, pick the newest
     Directory dir = Directory(executableDir);
     while (dir.path != dir.parent.path) {
       final targetDir = Directory(p.join(dir.path, 'target'));
       if (await targetDir.exists()) {
-        final releasePath = p.join(targetDir.path, 'release', 'lynqo-server');
-        if (await File(releasePath).exists()) {
-          return releasePath;
-        }
-        final debugPath = p.join(targetDir.path, 'debug', 'lynqo-server');
-        if (await File(debugPath).exists()) {
-          return debugPath;
-        }
+        final binary = await _getNewestBinary(targetDir.path);
+        if (binary != null) return binary;
       }
       dir = dir.parent;
     }
@@ -115,16 +111,30 @@ class ServerManager {
     while (currentDir.path != currentDir.parent.path) {
       final targetDir = Directory(p.join(currentDir.path, 'target'));
       if (await targetDir.exists()) {
-        final releasePath = p.join(targetDir.path, 'release', 'lynqo-server');
-        if (await File(releasePath).exists()) {
-          return releasePath;
-        }
-        final debugPath = p.join(targetDir.path, 'debug', 'lynqo-server');
-        if (await File(debugPath).exists()) {
-          return debugPath;
-        }
+        final binary = await _getNewestBinary(targetDir.path);
+        if (binary != null) return binary;
       }
       currentDir = currentDir.parent;
+    }
+
+    return null;
+  }
+
+  Future<String?> _getNewestBinary(String targetDirPath) async {
+    final releaseFile = File(p.join(targetDirPath, 'release', 'lynqo-server'));
+    final debugFile = File(p.join(targetDirPath, 'debug', 'lynqo-server'));
+
+    final releaseExists = await releaseFile.exists();
+    final debugExists = await debugFile.exists();
+
+    if (releaseExists && debugExists) {
+      final releaseTime = (await releaseFile.lastModified()).millisecondsSinceEpoch;
+      final debugTime = (await debugFile.lastModified()).millisecondsSinceEpoch;
+      return debugTime > releaseTime ? debugFile.path : releaseFile.path;
+    } else if (releaseExists) {
+      return releaseFile.path;
+    } else if (debugExists) {
+      return debugFile.path;
     }
 
     return null;

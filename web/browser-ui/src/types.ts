@@ -53,6 +53,20 @@ export interface TransferTask {
   created_at: number;
 }
 
+export interface SharedFolderItem {
+  name: string;
+  relative_path: string;
+  file_size: number;
+  mime_type: string | null;
+  is_dir: boolean;
+  modified_at: number;
+}
+
+export interface SharedFolderConfig {
+  path: string | null;
+  is_active: boolean;
+}
+
 export type WsEvent =
   | { type: 'clipboard_updated'; items: ClipboardEntry[] }
   | { type: 'file_shared'; file: SharedFile }
@@ -64,4 +78,7 @@ export type WsEvent =
   | { type: 'transfer_progress'; task: TransferTask }
   | { type: 'transfer_completed'; task: TransferTask }
   | { type: 'transfer_failed'; task: TransferTask }
+  | { type: 'shared_folder_changed' }
+  | { type: 'shared_folder_config_updated'; config: SharedFolderConfig }
   | { type: 'pong' };
+

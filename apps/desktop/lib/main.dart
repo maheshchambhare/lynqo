@@ -40,13 +40,9 @@ void main() async {
     titleBarStyle: TitleBarStyle.hidden, // Frameless window
   );
   windowManager.waitUntilReadyToShow(windowOptions, () async {
-    // Temporarily show the window invisibly to let the OS initialize the window structure, then hide it.
-    // This resolves issues where background event dispatchers aren't registered by macOS.
-    await windowManager.setOpacity(0.0);
-    await windowManager.show();
-    await windowManager.hide();
     await windowManager.setOpacity(1.0);
-    await windowManager.setSkipTaskbar(false);
+    await windowManager.show();
+    await windowManager.focus();
   });
 
   // Start the Rust sidecar server

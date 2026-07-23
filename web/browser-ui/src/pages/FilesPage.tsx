@@ -1,91 +1,42 @@
-import { useState, useMemo } from 'react';
-import { Files, Download, Trash2, Upload, Eye, X, HardDrive } from 'lucide-react';
-import { formatBytes, formatTime, getFileExt } from '../utils';
+import { useState, useRef } from 'react';
+import { Files, Download, Trash2, Upload, Play, RefreshCw, FileText, Image as ImageIcon } from 'lucide-react';
 import type { useStore } from '../hooks/useStore';
-import Sparkline from '../components/Sparkline';
+import type { SharedFile } from '../types';
 
-type StoreType = ReturnType<typeof useStore>;
+interface FilesPageProps {
+  store: ReturnType<typeof useStore>;
+}
 
-const isImage = (fileName: string) => {
-  const ext = fileName.split('.').pop()?.toLowerCase();
-  return ext ? ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext) : false;
-};
-
-const isVideo = (fileName: string) => {
-  const ext = fileName.split('.').pop()?.toLowerCase();
-  return ext ? ['mp4', 'webm', 'ogg', 'mov', 'm4v'].includes(ext) : false;
-};
-
-const isMedia = (fileName: string) => {
-  const ext = fileName.split('.').pop()?.toLowerCase();
-  return ext ? ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'mp4', 'webm', 'ogg', 'mov', 'm4v'].includes(ext) : false;
-};
-
-export default function FilesPage({ store }: { store: StoreType }) {
-  const [dragging, setDragging] = useState(false);
+export default function FilesPage({ store }: FilesPageProps) {
+  const { files, revokeFile, fetchAll } = store;
+  const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [previewFile, setPreviewFile] = useState<any>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [previewFile, setPreviewFile] = useState<SharedFile | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const toggleSelect = (id: string) => {
-    const next = new Set(selectedIds);
-    if (next.has(id)) {
-      next.delete(id);
-    } else {
-      next.add(id);
-    }
-    setSelectedIds(next);
+  const formatSize = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
-  const toggleSelectAll = () => {
-    if (selectedIds.size === store.files.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(store.files.map((f) => f.id)));
-    }
-  };
-
-  const downloadSelected = () => {
-    selectedIds.forEach((id) => {
-      const f = store.files.find((file) => file.id === id);
-      if (!f) return;
-      const link = document.createElement('a');
-      link.href = `/api/files/${id}`;
-      link.setAttribute('download', f.file_name);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    });
-  };
-
-  const revokeSelected = async () => {
-    if (confirm(`Are you sure you want to revoke share for ${selectedIds.size} files?`)) {
-      const ids = Array.from(selectedIds);
-      setSelectedIds(new Set());
-      for (const id of ids) {
-        await store.revokeFile(id);
-      }
-    }
-  };
-
-  const uploadFiles = async (files: FileList) => {
+  const uploadFiles = async (selectedFiles: FileList | File[]) => {
     setUploading(true);
     try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
         const formData = new FormData();
         formData.append('file', file);
-        const res = await fetch('/api/files/upload', {
+        await fetch('/api/files/upload', {
           method: 'POST',
           body: formData,
         });
-        if (!res.ok) {
-          throw new Error(`Upload failed for ${file.name}`);
-        }
       }
+      fetchAll();
     } catch (err) {
-      console.error(err);
-      alert('Failed to upload/share one or more files');
+      console.error('Failed to upload file:', err);
     } finally {
       setUploading(false);
     }
@@ -93,7 +44,7 @@ export default function FilesPage({ store }: { store: StoreType }) {
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    setDragging(false);
+    setDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       uploadFiles(e.dataTransfer.files);
     }
@@ -105,203 +56,165 @@ export default function FilesPage({ store }: { store: StoreType }) {
     }
   };
 
-  const totalSize = store.files.reduce((s, f) => s + f.file_size, 0);
-  const totalDownloads = store.files.reduce((s, f) => s + f.download_count, 0);
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const filesSpark = useMemo(
-    () => Array.from({ length: 8 }, (_, i) => Math.max(0, store.files.length - (7 - i))),
-    [store.files.length]
-  );
-
   return (
-    <div>
-      <div className="page-header">
-        <h1 className="page-title">Shared Files</h1>
-        <p className="page-subtitle">Files shared across devices</p>
-      </div>
-
-      {/* Stats banner */}
-      <div className="stats-banner purple">
-        <div className="stats-banner-glow" />
-        <div className="stats-content">
-          <div className="stats-item">
-            <div className="stats-label">Files Shared</div>
-            <div className="stats-number">{store.files.length}</div>
-          </div>
-          <div className="stats-item">
-            <div className="stats-label">Total Size</div>
-            <div className="stats-number">{formatBytes(totalSize)}</div>
-          </div>
-          <div className="stats-item">
-            <div className="stats-label">Downloads</div>
-            <div className="stats-number">{totalDownloads}</div>
-          </div>
-        </div>
-        <div className="stats-chart">
-          <Sparkline data={filesSpark} color="#818CF8" height={40} />
-        </div>
-        <div className="stats-badge-icon">
-          <HardDrive size={22} color="var(--accent-3)" />
-        </div>
-      </div>
-
+    <div className="page-container">
+      {/* Hidden File Input */}
       <input
         type="file"
-        id="file-upload"
-        multiple
-        style={{ display: 'none' }}
+        ref={fileInputRef}
         onChange={handleFileSelect}
+        style={{ display: 'none' }}
+        multiple
       />
 
-      <div
-        className={`drop-zone ${dragging ? 'dragging' : ''} ${uploading ? 'uploading' : ''}`}
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={handleDrop}
-        onClick={() => document.getElementById('file-upload')?.click()}
-        style={{ cursor: 'pointer' }}
-      >
-        <Upload size={32} />
-        <p>{uploading ? 'Uploading/Sharing...' : 'Click or drag a file here to share'}</p>
-        <p className="drop-zone-sub">Files are served directly from this network server</p>
+      {/* Page Header */}
+      <div className="page-header">
+        <div>
+          <h2 className="page-title">
+            <Files size={22} style={{ color: 'var(--accent-apple-blue)' }} />
+            All Shared Files
+          </h2>
+          <p className="page-subtitle">P2P File Shares Active Across LAN Mesh Nodes</p>
+        </div>
+
+        <div className="header-actions">
+          <button className="btn-apple-secondary" onClick={() => fetchAll()}>
+            <RefreshCw size={14} /> Refresh
+          </button>
+          <button className="btn-apple-primary" onClick={() => fileInputRef.current?.click()}>
+            <Upload size={14} /> {uploading ? 'Uploading...' : 'Share File'}
+          </button>
+        </div>
       </div>
 
-      {selectedIds.size > 0 && (
-        <div className="bulk-action-bar">
-          <div className="bulk-info">
-            <input
-              type="checkbox"
-              checked={selectedIds.size === store.files.length}
-              ref={(el) => {
-                if (el) {
-                  el.indeterminate = selectedIds.size > 0 && selectedIds.size < store.files.length;
-                }
-              }}
-              onChange={toggleSelectAll}
-            />
-            <span>{selectedIds.size} files selected</span>
-          </div>
-          <div className="bulk-buttons">
-            <button className="btn btn-accent btn-sm" onClick={downloadSelected}>
-              <Download size={14} style={{ marginRight: 6 }} /> Download Selected
-            </button>
-            <button className="btn btn-danger btn-sm" onClick={revokeSelected}>
-              <Trash2 size={14} style={{ marginRight: 6 }} /> Revoke Selected
-            </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setSelectedIds(new Set())}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Drag & Drop Upload Zone */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        className={`upload-drop-zone ${dragOver ? 'drag-over' : ''}`}
+      >
+        <Upload size={28} style={{ color: 'var(--accent-apple-blue)', marginBottom: '6px' }} />
+        <p className="drop-zone-text">
+          {uploading ? 'Uploading and sharing files across network...' : 'Drag & drop files here to share across connected devices'}
+        </p>
+      </div>
 
-      {store.files.length === 0 ? (
-        <div className="empty-state" style={{ marginTop: 40 }}>
-          <Files size={40} />
-          <p>No files are being shared</p>
-          <p style={{ fontSize: 12, opacity: 0.6 }}>Select a file in the desktop app to share it here</p>
+      {/* Files Grid */}
+      <div className="folder-section-title">Active Network Files ({files.length})</div>
+      {files.length === 0 ? (
+        <div className="empty-state-box">
+          <Files size={44} style={{ margin: '0 auto 0.75rem auto', opacity: 0.35, color: 'var(--text-muted)' }} />
+          <p className="empty-state-title">No files shared yet</p>
+          <p className="empty-state-sub">Click "Share File" above or drop files into the application to broadcast</p>
         </div>
       ) : (
-        <div className="file-list">
-          {store.files.map((f) => (
-            <div
-              className={`file-item ${selectedIds.has(f.id) ? 'selected' : ''}`}
-              key={f.id}
-              onClick={() => toggleSelect(f.id)}
-              style={{ cursor: 'pointer' }}
-            >
-              <div className="file-checkbox-wrapper" onClick={(e) => e.stopPropagation()}>
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(f.id)}
-                  onChange={() => toggleSelect(f.id)}
-                />
-              </div>
-              <div className="file-icon" style={{ overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {isMedia(f.file_name) ? (
-                  <img
-                    src={`/api/files/${f.id}/thumbnail`}
-                    alt="thumb"
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '4px' }}
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                      const parent = e.currentTarget.parentElement;
-                      if (parent && !parent.querySelector('.fallback-ext')) {
-                        const txt = document.createElement('span');
-                        txt.className = 'fallback-ext';
-                        txt.innerText = getFileExt(f.file_name);
-                        parent.appendChild(txt);
-                      }
-                    }}
-                  />
-                ) : (
-                  getFileExt(f.file_name)
+        <div className="finder-grid">
+          {files.map((file) => {
+            const isImage = file.mime_type?.startsWith('image/');
+            const isVideo = file.mime_type?.startsWith('video/');
+
+            return (
+              <div key={file.id} className="apple-media-card" onClick={() => setPreviewFile(file)}>
+                {isVideo && (
+                  <div className="video-duration-tag">
+                    <Play size={10} fill="#FFF" /> Media
+                  </div>
                 )}
-              </div>
-              <div className="file-info">
-                <div className="file-name">{f.file_name}</div>
-                <div className="file-meta">
-                  {formatBytes(f.file_size)}
-                  {f.mime_type ? ` · ${f.mime_type}` : ''}
-                  {' · '}{formatTime(f.created_at)}
-                  {' · '}{f.download_count} downloads
+
+                {isImage || isVideo ? (
+                  <img src={`/api/files/${file.id}`} alt={file.file_name} loading="lazy" />
+                ) : (
+                  <div className="generic-file-preview">
+                    {file.file_name.endsWith('.pdf') ? (
+                      <FileText size={42} style={{ color: 'var(--tag-red)' }} />
+                    ) : (
+                      <ImageIcon size={42} style={{ color: 'var(--accent-apple-blue)' }} />
+                    )}
+                    <span className="generic-file-size">{formatSize(file.file_size)}</span>
+                  </div>
+                )}
+
+                <div className="media-card-overlay">
+                  <div className="media-filename">
+                    <span>{file.file_name}</span>
+                  </div>
+                  <span className="media-filesize-sub">{formatSize(file.file_size)} · {file.download_count} downloads</span>
                 </div>
               </div>
-              <div className="file-actions" onClick={(e) => e.stopPropagation()}>
-                {(isImage(f.file_name) || isVideo(f.file_name)) && (
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => setPreviewFile(f)}
-                    title="Preview"
-                  >
-                    <Eye size={14} />
-                  </button>
-                )}
-                <a
-                  id={`download-${f.id}`}
-                  className="btn btn-ghost btn-sm"
-                  href={`/api/files/${f.id}`}
-                  download={f.file_name}
-                  title="Download"
-                >
-                  <Download size={14} />
-                </a>
-                <button
-                  id={`revoke-${f.id}`}
-                  className="btn btn-danger btn-sm"
-                  onClick={() => store.revokeFile(f.id)}
-                  title="Revoke share"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
+      {/* Preview Modal */}
       {previewFile && (
-        <div className="preview-modal" onClick={() => setPreviewFile(null)}>
-          <div className="preview-content" onClick={(e) => e.stopPropagation()}>
-            <button className="preview-close" onClick={() => setPreviewFile(null)}>
-              <X size={20} />
-            </button>
-            <div className="preview-body">
-              {isImage(previewFile.file_name) ? (
-                <img src={`/api/files/${previewFile.id}`} alt={previewFile.file_name} />
-              ) : (
-                <video src={`/api/files/${previewFile.id}`} controls autoPlay />
-              )}
+        <div className="preview-modal-backdrop" onClick={() => setPreviewFile(null)}>
+          <div className="preview-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="preview-modal-header">
+              <h3 className="preview-modal-title">{previewFile.file_name}</h3>
+              <div className="preview-modal-actions">
+                <button
+                  className="btn-apple-secondary"
+                  onClick={async () => {
+                    const pwd = prompt('Optional: Set a password for this public link (leave blank for public access):');
+                    const maxD = prompt('Optional: Maximum download limit (leave blank for unlimited):');
+                    const expH = prompt('Optional: Expiration in hours (leave blank for no expiration):');
+                    
+                    try {
+                      const res = await fetch(`/api/files/${previewFile.id}/public-share`, {
+                        method: 'POST',
+                        headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify({
+                          password: pwd ? pwd.trim() : null,
+                          max_downloads: maxD ? parseInt(maxD) : null,
+                          expires_hours: expH ? parseInt(expH) : null,
+                        }),
+                      });
+                      const data = await res.json();
+                      if (data.token) {
+                        const fullUrl = data.public_url || `https://share.lynqo.app/public/s/${data.token}`;
+                        await navigator.clipboard.writeText(fullUrl);
+                        alert(`Public link created & copied to clipboard!\n\nURL: ${fullUrl}${pwd ? '\nPassword Protected: Yes' : ''}`);
+                      }
+                    } catch (err) {
+                      alert('Failed to generate public share link.');
+                    }
+                  }}
+                >
+                  🌐 Create Public Link
+                </button>
+                <a
+                  href={`/api/files/${previewFile.id}`}
+                  download={previewFile.file_name}
+                  className="btn-apple-primary"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Download size={14} /> Download ({formatSize(previewFile.file_size)})
+                </a>
+                <button
+                  className="btn-apple-secondary"
+                  style={{ color: 'var(--tag-red)' }}
+                  onClick={() => {
+                    if (confirm(`Revoke share for ${previewFile.file_name}?`)) {
+                      revokeFile(previewFile.id);
+                      setPreviewFile(null);
+                    }
+                  }}
+                >
+                  <Trash2 size={14} /> Revoke
+                </button>
+                <button className="preview-modal-close" onClick={() => setPreviewFile(null)}>✕</button>
+              </div>
             </div>
-            <div className="preview-footer">
-              <span className="preview-title">{previewFile.file_name}</span>
-              <a
-                className="btn btn-accent btn-sm"
-                href={`/api/files/${previewFile.id}`}
-                download={previewFile.file_name}
-              >
-                Download
-              </a>
+            <div className="preview-modal-body">
+              {previewFile.mime_type?.startsWith('image/') ? (
+                <img src={`/api/files/${previewFile.id}`} alt={previewFile.file_name} className="modal-media-element" />
+              ) : previewFile.mime_type?.startsWith('video/') ? (
+                <video src={`/api/files/${previewFile.id}`} controls className="modal-media-element" />
+              ) : (
+                <iframe src={`/api/files/${previewFile.id}`} title={previewFile.file_name} className="modal-iframe-element" />
+              )}
             </div>
           </div>
         </div>

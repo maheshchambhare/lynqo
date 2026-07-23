@@ -30,6 +30,19 @@ pub struct SharedFile {
     pub revoked: bool,
 }
 
+/// A public share record with token, password protection and download limits
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicShare {
+    pub token: String,
+    pub file_id: String,
+    pub password_hash: Option<String>,
+    pub max_downloads: Option<u64>,
+    pub download_count: u64,
+    pub expires_at: Option<i64>,
+    pub created_at: i64,
+    pub revoked: bool,
+}
+
 impl SharedFile {
     pub fn new(file_path: &PathBuf, id: &str) -> Self {
         let file_name = file_path
@@ -160,14 +173,58 @@ impl Default for AppConfig {
             .unwrap_or_else(|| PathBuf::from("."))
             .join("lynqo");
 
+        let exe_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+            .unwrap_or_else(|| PathBuf::from("."));
+
+        let web_dir = if exe_dir.join("web/browser-ui/dist").exists() {
+            exe_dir.join("web/browser-ui/dist")
+        } else if exe_dir.join("dist").exists() {
+            exe_dir.join("dist")
+        } else if exe_dir.join("index.html").exists() {
+            exe_dir.clone()
+        } else {
+            PathBuf::from("web/browser-ui/dist")
+        };
+
         Self {
             port: 7432,
             hostname: "lynqo".to_string(),
             db_path: data_dir.join("lynqo.db"),
-            web_dir: PathBuf::from("web/browser-ui/dist"),
+            web_dir,
             clipboard_history_limit: 500,
         }
     }
+}
+
+/// An item in the central shared folder
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SharedFolderItem {
+    pub name: String,
+    pub relative_path: String,
+    pub file_size: u64,
+    pub mime_type: Option<String>,
+    pub is_dir: bool,
+    pub modified_at: i64,
+}
+
+/// Central shared folder configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SharedFolderConfig {
+    pub path: Option<String>,
+    pub is_active: bool,
+}
+
+/// A timestamped comment left on a shared video review page
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VideoComment {
+    pub id: String,
+    pub share_token: String,
+    pub timestamp_sec: f64,
+    pub author_name: String,
+    pub comment_text: String,
+    pub created_at: i64,
 }
 
 /// WebSocket events broadcast to all clients
@@ -184,6 +241,11 @@ pub enum WsEvent {
     TransferProgress { task: TransferTask },
     TransferCompleted { task: TransferTask },
     TransferFailed { task: TransferTask },
+    SharedFolderChanged,
+    SharedFolderConfigUpdated { config: SharedFolderConfig },
+    VideoCommentAdded { comment: VideoComment },
+    VideoTyping { share_token: String, author_name: String, is_typing: bool },
     Pong,
 }
+
 

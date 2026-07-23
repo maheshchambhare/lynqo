@@ -1,13 +1,17 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use anyhow::Result;
 use axum::{
     routing::{delete, get, post},
     Router,
 };
+
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod routes;
 mod state;
+mod tunnel;
 mod ws;
 
 use state::AppState;
@@ -26,6 +30,9 @@ async fn main() -> Result<()> {
 
     // Initialise database
     let db = lynqo_db::Database::new(&config.db_path).await?;
+
+    // Auto public tunnel manager
+    tunnel::start_auto_tunnel(db.clone(), config.port);
 
     // WebSocket hub
     let ws_hub = ws::WsHub::new();
@@ -79,16 +86,15 @@ async fn main() -> Result<()> {
     // Start browsing for other devices
     let discovery_rx = discovery.start_browser()?;
     
-    let handle = tokio::runtime::Handle::current();
     // Spawn task to process discovery events
     {
         let db = db.clone();
         let ws_hub = ws_hub.clone();
-        std::thread::spawn(move || {
+        tokio::task::spawn_blocking(move || {
             while let Ok(event) = discovery_rx.recv() {
                 let db = db.clone();
                 let ws_hub = ws_hub.clone();
-                handle.spawn(async move {
+                tokio::spawn(async move {
                     match event {
                         lynqo_discovery::DiscoveryEvent::DeviceDiscovered { id, name, ip, port: _, platform, version } => {
                             let device = lynqo_core::Device {
@@ -139,17 +145,29 @@ async fn main() -> Result<()> {
         config: config.clone(),
     };
 
+    // Spawn central shared folder filesystem watcher
+    routes::shared_folder::spawn_shared_folder_watcher(state.clone());
+
     let app = Router::new()
         .route("/api/status", get(routes::status::get_status))
+        .route("/api/settings/public-domain", get(routes::status::get_public_domain).post(routes::status::set_public_domain))
         .route("/api/files", get(routes::files::list_files))
         .route("/api/files/share", post(routes::files::share_file))
         .route("/api/files/upload", post(routes::files::upload_file))
         .route("/api/files/:id", get(routes::files::stream_file))
         .route("/api/files/:id/thumbnail", get(routes::files::get_thumbnail))
+        .route("/api/files/:id/public-share", post(routes::files::create_public_share_handler))
+        .route("/public/s/:token", get(routes::files::serve_public_share_handler))
+        .route("/public/v/:token", get(routes::video_review::serve_video_review_page_handler))
+        .route("/public/v/:token/stream", get(routes::video_review::stream_video_review_handler))
+        .route("/public/v/:token/comments", get(routes::video_review::list_video_comments_handler).post(routes::video_review::add_video_comment_handler))
+        .route("/api/files/:id/video-comments", get(routes::video_review::list_file_video_comments_handler))
+        .route("/api/public-shares/:token", delete(routes::files::revoke_public_share_handler))
         .route("/api/files/:id", delete(routes::files::revoke_file))
         .route("/api/clipboard", get(routes::clipboard::get_history))
         .route("/api/clipboard", post(routes::clipboard::push_clipboard))
         .route("/api/devices", get(routes::devices::list_devices))
+        .nest("/api/shared-folder", routes::shared_folder::router())
         .route("/ws", get(ws::ws_handler))
         // Serve browser UI last (catch-all)
         .nest_service("/", tower_http::services::ServeDir::new(web_dir))
@@ -159,10 +177,13 @@ async fn main() -> Result<()> {
         .with_state(state);
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], config.port));
+
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!("lynqo-server listening on http://{addr}");
 
     axum::serve(listener, app).await?;
+
+
     Ok(())
 }
 

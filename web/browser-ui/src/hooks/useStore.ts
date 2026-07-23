@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { SharedFile, ClipboardEntry, Device, WsEvent } from '../types';
+import type { SharedFile, ClipboardEntry, Device, SharedFolderItem, SharedFolderConfig, WsEvent } from '../types';
 
 const API = '';
 
@@ -7,7 +7,26 @@ export function useStore() {
   const [files, setFiles] = useState<SharedFile[]>([]);
   const [clipboard, setClipboard] = useState<ClipboardEntry[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [sharedFolderItems, setSharedFolderItems] = useState<SharedFolderItem[]>([]);
+  const [sharedFolderConfig, setSharedFolderConfig] = useState<SharedFolderConfig | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const fetchSharedFolder = useCallback(async () => {
+    try {
+      const [filesRes, configRes] = await Promise.all([
+        fetch(`${API}/api/shared-folder/files`),
+        fetch(`${API}/api/shared-folder/config`),
+      ]);
+      if (filesRes.ok) {
+        setSharedFolderItems((await filesRes.json()) as SharedFolderItem[]);
+      }
+      if (configRes.ok) {
+        setSharedFolderConfig((await configRes.json()) as SharedFolderConfig);
+      }
+    } catch (e) {
+      console.error('Failed to fetch shared folder data', e);
+    }
+  }, []);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -20,12 +39,13 @@ export function useStore() {
       setFiles((await filesRes.json()) as SharedFile[]);
       setClipboard((await clipRes.json()) as ClipboardEntry[]);
       setDevices((await devicesRes.json()) as Device[]);
+      await fetchSharedFolder();
     } catch (e) {
       console.error('Failed to fetch initial data', e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchSharedFolder]);
 
   const handleWsEvent = useCallback((event: WsEvent) => {
     switch (event.type) {
@@ -45,10 +65,17 @@ export function useStore() {
       case 'device_left':
         setDevices((prev) => prev.filter((d) => d.id !== event.device_id));
         break;
+      case 'shared_folder_changed':
+        fetchSharedFolder();
+        break;
+      case 'shared_folder_config_updated':
+        setSharedFolderConfig(event.config);
+        fetchSharedFolder();
+        break;
       case 'pong':
         break;
     }
-  }, []);
+  }, [fetchSharedFolder]);
 
   const revokeFile = useCallback(async (id: string) => {
     await fetch(`/api/files/${id}`, { method: 'DELETE' });
@@ -63,5 +90,37 @@ export function useStore() {
     });
   }, []);
 
-  return { files, clipboard, devices, loading, fetchAll, handleWsEvent, revokeFile, pushClipboard };
+  const deleteSharedFolderFile = useCallback(async (filename: string) => {
+    await fetch(`/api/shared-folder/file/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+    fetchSharedFolder();
+  }, [fetchSharedFolder]);
+
+  const uploadToSharedFolder = useCallback(async (files: FileList | File[]) => {
+    const formData = new FormData();
+    for (let i = 0; i < files.length; i++) {
+      formData.append('file', files[i]);
+    }
+    await fetch('/api/shared-folder/upload', {
+      method: 'POST',
+      body: formData,
+    });
+    fetchSharedFolder();
+  }, [fetchSharedFolder]);
+
+  return {
+    files,
+    clipboard,
+    devices,
+    sharedFolderItems,
+    sharedFolderConfig,
+    loading,
+    fetchAll,
+    fetchSharedFolder,
+    handleWsEvent,
+    revokeFile,
+    pushClipboard,
+    deleteSharedFolderFile,
+    uploadToSharedFolder,
+  };
 }
+

@@ -18,3 +18,24 @@ pub async fn get_status(State(state): State<AppState>) -> Json<StatusResponse> {
         platform: std::env::consts::OS,
     })
 }
+
+#[derive(serde::Deserialize)]
+pub struct PublicDomainPayload {
+    pub domain: String,
+}
+
+pub async fn set_public_domain(
+    State(state): State<AppState>,
+    Json(payload): Json<PublicDomainPayload>,
+) -> impl axum::response::IntoResponse {
+    let domain = payload.domain.trim();
+    let _ = state.db.set_setting("public_domain", domain).await;
+    Json(serde_json::json!({"success": true, "public_domain": domain}))
+}
+
+pub async fn get_public_domain(
+    State(state): State<AppState>,
+) -> impl axum::response::IntoResponse {
+    let domain = state.db.get_setting("public_domain").await.ok().flatten();
+    Json(serde_json::json!({"public_domain": domain}))
+}
